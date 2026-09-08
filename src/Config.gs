@@ -50,7 +50,8 @@ var INDEX_COLUMNS = [
   { key: 'pagine', header: 'Pagine' },
   { key: 'confidenza', header: 'Confidenza' },
   { key: 'stato', header: 'Stato' },
-  { key: 'nomeOriginale', header: 'Nome originale' }
+  { key: 'nomeOriginale', header: 'Nome originale' },
+  { key: 'paroleChiave', header: 'Parole chiave' }
 ];
 
 var STATO = {
@@ -69,7 +70,11 @@ var DEFAULT_CONFIG = [
   ['FAMILY', 'Andrea Agnoli, Serena', 'Nomi dei familiari, separati da virgola (aiutano a riconoscere i soggetti)'],
   ['MAX_PDF_MB', '20', 'Sopra questa dimensione il PDF viene letto via OCR di Drive invece che inviato intero'],
   ['MIN_FILE_AGE_SEC', '60', 'Secondi di attesa dopo l\'ultima modifica prima di processare un file (upload in corso)'],
-  ['BACKUP_KEEP', '12', 'Quanti export .xlsx tenere nella cartella Backup']
+  ['BACKUP_KEEP', '12', 'Quanti export .xlsx tenere nella cartella Backup'],
+  ['GOOGLE_CLIENT_ID', '', 'Client ID OAuth di Google usato dal sito per "Accedi con Google"'],
+  ['ALLOWED_EMAILS', '', 'Chi può entrare nel sito: email Google separate da virgola'],
+  ['EDITOR_EMAILS', '', 'Chi può correggere i metadati e caricare documenti: email separate da virgola (vuoto = tutti gli ALLOWED)'],
+  ['SITE_URL', '', 'Indirizzo del sito (GitHub Pages), usato per il redirect e nelle email']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -155,7 +160,24 @@ function getConfig() {
     maxPdfBytes: (parseFloat(kv.MAX_PDF_MB) || 20) * 1024 * 1024,
     minFileAgeMs: (parseInt(kv.MIN_FILE_AGE_SEC, 10) || 60) * 1000,
     backupKeep: parseInt(kv.BACKUP_KEEP, 10) || 12,
+    googleClientId: kv.GOOGLE_CLIENT_ID || '',
+    allowedEmails: splitEmails_(kv.ALLOWED_EMAILS),
+    editorEmails: splitEmails_(kv.EDITOR_EMAILS),
+    siteUrl: kv.SITE_URL || '',
     categories: categories,
     categoryNames: Object.keys(categories)
   };
+}
+
+function splitEmails_(s) {
+  return String(s || '').toLowerCase().split(/[,;\s]+/).map(function (e) { return e.trim(); }).filter(Boolean);
+}
+
+/** Aggiunge al foglio Config le chiavi mancanti (per aggiornamenti successivi al primo setup). */
+function ensureConfigDefaults_() {
+  var sh = getSpreadsheet_().getSheetByName(SHEET.CONFIG);
+  if (!sh) return;
+  var existing = {};
+  if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) { if (r[0]) existing[String(r[0]).trim()] = true; });
+  DEFAULT_CONFIG.forEach(function (row) { if (!existing[row[0]]) sh.appendRow(row); });
 }

@@ -106,7 +106,8 @@ function normalizeMeta_(raw, file, cfg) {
     pagine: parseInt(raw.numero_pagine, 10) || '',
     confidenza: Math.round(conf * 100) / 100,
     stato: conf < cfg.confidenceThreshold ? STATO.DA_VERIFICARE : STATO.AUTO,
-    nomeOriginale: file.getName()
+    nomeOriginale: file.getName(),
+    paroleChiave: Array.isArray(raw.parole_chiave) ? raw.parole_chiave.map(function (s) { return String(s).trim(); }).filter(Boolean).join(', ') : ''
   };
   if (!dataDoc) meta.stato = STATO.DA_VERIFICARE;   // data mancante: meglio un controllo umano
   return meta;

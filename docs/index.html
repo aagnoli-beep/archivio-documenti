@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f4ef">
+  <title>Archivio di casa</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6fed'/%3E%3Cpath d='M16 20h14l4 4h14v22H16z' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+</head>
+<body>
+
+  <!-- ACCESSO -->
+  <section id="viewLogin" class="login" hidden>
+    <div class="login-card">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="56" height="56"><rect width="64" height="64" rx="14" fill="#2f6fed"/><path d="M16 20h14l4 4h14v22H16z" fill="#fff"/></svg>
+      </div>
+      <h1>Archivio di casa</h1>
+      <p class="lead">Tutti i documenti di famiglia, cercabili dal telefono. Accedi con il tuo account Google.</p>
+      <div id="gsiButton" class="gsi"></div>
+      <p id="loginMsg" class="muted small"></p>
+      <p class="muted small">Riservato alla famiglia: entrano solo gli account autorizzati.</p>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <div id="viewApp" hidden>
+    <header class="top">
+      <div class="top-inner">
+        <div class="brand">
+          <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#2f6fed"/><path d="M16 20h14l4 4h14v22H16z" fill="#fff"/></svg>
+          <span>Archivio di casa</span>
+        </div>
+        <nav class="tabs" role="tablist">
+          <button class="tab active" data-tab="docs" role="tab">Documenti</button>
+          <button class="tab" data-tab="ask" role="tab">Chiedi</button>
+        </nav>
+        <div class="account">
+          <img id="avatar" class="avatar" alt="" hidden>
+          <span id="userName" class="user"></span>
+          <button id="btnLogout" class="btn ghost small" title="Esci">Esci</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- DOCUMENTI -->
+      <section id="tabDocs" class="panel">
+        <div class="search">
+          <input id="q" type="search" placeholder="Cerca: visita, Enel, Serena, 2025…" autocomplete="off" autocapitalize="off">
+        </div>
+        <div class="filters">
+          <select id="fCat" aria-label="Categoria"><option value="">Tutte le categorie</option></select>
+          <select id="fSub" aria-label="Persona"><option value="">Tutte le persone</option></select>
+          <select id="fYear" aria-label="Anno"><option value="">Tutti gli anni</option></select>
+          <select id="fStato" aria-label="Stato"><option value="">Tutti gli stati</option></select>
+        </div>
+        <div id="banner" class="banner" hidden></div>
+        <div id="summary" class="summary">Caricamento…</div>
+        <ul id="list" class="list"></ul>
+        <button id="more" class="btn secondary wide" hidden>Mostra altri</button>
+        <p id="empty" class="empty" hidden>Nessun documento trovato.</p>
+        <p class="foot"><a id="sheetLink" href="#" target="_blank" rel="noopener">Indice (foglio)</a> · <a id="archiveLink" href="#" target="_blank" rel="noopener">Cartella su Drive</a></p>
+      </section>
+
+      <!-- CHIEDI -->
+      <section id="tabAsk" class="panel" hidden>
+        <div id="chat" class="chat">
+          <div class="msg bot">
+            <div class="bubble">Ciao! Chiedimi qualcosa sui documenti di casa. Per esempio:</div>
+            <div class="chips">
+              <button class="chip" data-q="Quando scade l'assicurazione dell'auto?">Quando scade l'assicurazione dell'auto?</button>
+              <button class="chip" data-q="Quali referti medici abbiamo di Serena?">Referti medici di Serena</button>
+              <button class="chip" data-q="Quanto abbiamo pagato di luce negli ultimi mesi?">Quanto abbiamo pagato di luce?</button>
+              <button class="chip" data-q="Ci sono documenti da verificare?">Documenti da verificare</button>
+            </div>
+          </div>
+        </div>
+        <form id="askForm" class="askbar" autocomplete="off">
+          <input id="askInput" type="text" placeholder="Fai una domanda sull'archivio…" maxlength="500">
+          <button id="askSend" type="submit" class="btn">Invia</button>
+        </form>
+      </section>
+    </main>
+
+    <button id="btnUpload" class="fab" title="Carica un documento" hidden>＋</button>
+    <input id="fileInput" type="file" accept="application/pdf,image/*" hidden>
+  </div>
+
+  <!-- SCHEDA DOCUMENTO -->
+  <div id="overlay" class="overlay" hidden></div>
+  <section id="detail" class="sheet" hidden aria-modal="true" role="dialog">
+    <div class="sheet-head">
+      <button id="btnClose" class="icon" aria-label="Chiudi">←</button>
+      <h2 id="dTitle"></h2>
+    </div>
+    <div class="sheet-body">
+      <div id="dBadges" class="badges"></div>
+      <div class="actions">
+        <button id="dOpen" class="btn">Apri</button>
+        <a id="dDownload" class="btn secondary" href="#" download>Scarica</a>
+        <a id="dDrive" class="btn ghost" href="#" target="_blank" rel="noopener">Su Drive</a>
+        <button id="btnEdit" class="btn secondary" hidden>Modifica</button>
+      </div>
+      <dl id="dMeta" class="meta"></dl>
+      <div class="preview">
+        <div id="previewLoading" class="preview-loading">Carico l'anteprima…</div>
+        <iframe id="dPreview" title="Anteprima documento" hidden></iframe>
+      </div>
+
+      <form id="editForm" class="edit" hidden autocomplete="off">
+        <h3>Correggi i metadati</h3>
+        <label>Categoria <select name="categoria" id="eCat"></select></label>
+        <label>Sottocategoria <input name="sottocategoria" list="subList"><datalist id="subList"></datalist></label>
+        <label>Sotto-sottocategoria <input name="sottoSottocategoria"></label>
+        <label>Tipo documento <input name="tipoDocumento"></label>
+        <label>Mittente <input name="mittente"></label>
+        <label>Destinatario <input name="destinatario"></label>
+        <label>Persone (separate da virgola) <input name="soggetti"></label>
+        <label>Data documento <input name="dataDocumento" type="date"></label>
+        <label>Titolo <input name="titolo" required></label>
+        <label>Riassunto <textarea name="riassunto" rows="3"></textarea></label>
+        <label>Importo <input name="importo"></label>
+        <label>Scadenza <input name="scadenza" type="date"></label>
+        <label>Parole chiave <input name="paroleChiave"></label>
+        <div class="actions">
+          <button type="submit" class="btn">Salva</button>
+          <button type="button" id="btnCancel" class="btn secondary">Annulla</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="app.js"></script>
+</body>
+</html>

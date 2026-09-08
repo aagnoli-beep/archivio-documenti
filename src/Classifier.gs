@@ -37,10 +37,11 @@ function jsonSchema_(categoryNames) {
       importo: { type: 'string', description: 'Importo principale con valuta (es. "123,45 EUR"), oppure stringa vuota' },
       scadenza: { type: 'string', description: 'Eventuale scadenza o data di pagamento in YYYY-MM-DD, oppure stringa vuota' },
       numero_pagine: { type: 'integer', description: 'Numero di pagine del documento' },
+      parole_chiave: { type: 'array', items: { type: 'string' }, description: '5-12 parole o frasi chiave utili per ritrovare il documento (nomi, numeri di pratica, targhe, indirizzi, argomenti)' },
       confidenza: { type: 'number', description: 'Quanto sei sicuro della classificazione, da 0 a 1' }
     },
     required: ['categoria', 'sottocategoria', 'sotto_sottocategoria', 'tipo_documento', 'mittente', 'destinatario',
-      'soggetti', 'data_documento', 'titolo_breve', 'riassunto', 'importo', 'scadenza', 'numero_pagine', 'confidenza'],
+      'soggetti', 'data_documento', 'titolo_breve', 'riassunto', 'importo', 'scadenza', 'numero_pagine', 'parole_chiave', 'confidenza'],
     additionalProperties: false
   };
 }

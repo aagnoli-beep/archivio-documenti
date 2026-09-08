@@ -42,6 +42,7 @@ function setupProject() {
     config.getRange(2, 1, DEFAULT_CONFIG.length, 3).setValues(DEFAULT_CONFIG);
   }
   config.setFrozenRows(1);
+  ensureConfigDefaults_();
 
   var cats = getOrCreateSheet_(ss, SHEET.CATEGORIES);
   ensureHeaders_(cats, ['Categoria', 'Sottocategorie (separate da virgola)']);

@@ -3,3 +3,4 @@ node_modules/
 .clasp.json
 .DS_Store
 .claude/
+PRIVATE.md

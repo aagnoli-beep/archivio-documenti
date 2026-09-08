@@ -122,8 +122,13 @@ G.ScriptApp = {
   getOAuthToken: () => 'tok'
 };
 G.MailApp = { sendEmail: (m) => { G.__mail.push(m); } };
+G.__cache = {};
+G.CacheService = { getScriptCache: () => ({ get: (k) => (k in G.__cache ? G.__cache[k] : null), put: (k, v) => { G.__cache[k] = v; }, remove: (k) => { delete G.__cache[k]; } }) };
+G.ContentService = { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ _text: t, setMimeType() { return this; }, getContent: () => t }) };
+G.Utilities.computeDigest = (alg, s) => { const h = require('crypto').createHash('sha256').update(String(s)).digest(); return Array.from(h).map(b => (b > 127 ? b - 256 : b)); };
+G.Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
 G.Session = { getActiveUser: () => ({ getEmail: () => G.__user || 'serena@example.com' }), getEffectiveUser: () => ({ getEmail: () => 'andrea@example.com' }) };
-G.HtmlService = { createTemplateFromFile: () => ({ evaluate: () => ({ setTitle() { return this; }, addMetaTag() { return this; }, setXFrameOptionsMode() { return this; } }) }), createHtmlOutputFromFile: () => ({ getContent: () => '' }), XFrameOptionsMode: { ALLOWALL: 1 } };
+G.HtmlService = { createHtmlOutput: (h) => ({ _html: h, setTitle() { return this; } }) };
 
 // carica i sorgenti
 const SRC = process.env.SRC || path.join(__dirname, '..', 'src');

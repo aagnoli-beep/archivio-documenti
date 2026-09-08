@@ -16,7 +16,7 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 20); assert.strictEqual(ss.getSheetByName('Config').rows.length, 9); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 13); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
 t('due trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'exportIndexXlsx']); });
 t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 2); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
@@ -34,7 +34,7 @@ t('richiesta a Claude: modello, PDF base64, schema JSON, effort, fallbacks e hea
   const req = G.__http.filter(h => h.url.indexOf('anthropic.com') >= 0)[0]; const body = JSON.parse(req.opts.payload);
   assert.strictEqual(req.opts.headers['x-api-key'], 'sk-test'); assert.strictEqual(req.opts.headers['anthropic-version'], '2023-06-01'); assert.strictEqual(req.opts.headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
   assert.strictEqual(body.model, 'claude-opus-5'); assert.strictEqual(body.fallbacks, 'default'); assert.strictEqual(body.output_config.effort, 'low');
-  assert.strictEqual(body.output_config.format.type, 'json_schema'); assert.strictEqual(body.output_config.format.schema.additionalProperties, false); assert.strictEqual(body.output_config.format.schema.required.length, 14);
+  assert.strictEqual(body.output_config.format.type, 'json_schema'); assert.strictEqual(body.output_config.format.schema.additionalProperties, false); assert.strictEqual(body.output_config.format.schema.required.length, 15);
   assert.ok(body.output_config.format.schema.properties.categoria.enum.indexOf('Utenze') >= 0);
   const doc = body.messages[0].content[0]; assert.strictEqual(doc.type, 'document'); assert.strictEqual(doc.source.media_type, 'application/pdf'); assert.ok(Buffer.from(doc.source.data, 'base64').slice(0, 4).toString() === '%PDF');
   assert.ok(body.system.indexOf('Andrea Agnoli, Serena') >= 0); assert.ok(!('thinking' in body));
@@ -91,15 +91,37 @@ G.__http.length = 0;
 const img = G.__mkfile(inbox, 'foto.jpg', [255, 216, 255, 1, 2, 3], 'image/jpeg'); processInbox();
 t('immagine JPEG -> blocco image, estensione conservata', () => { const body = JSON.parse(G.__http[0].opts.payload); assert.strictEqual(body.messages[0].content[0].type, 'image'); assert.strictEqual(body.messages[0].content[0].source.media_type, 'image/jpeg'); assert.ok(/\.jpg$/.test(img.getName())); assert.ok(/_2\.jpg$/.test(img.getName()) === false); });
 
-console.log('6. web app');
-const idx = getIndex();
-t('getIndex restituisce documenti, categorie, permessi', () => { assert.ok(idx.docs.length >= 8); assert.ok(idx.categories.Salute.length > 0); assert.strictEqual(idx.canEdit, true); assert.strictEqual(idx.user, 'serena@example.com'); assert.ok(idx.archiveUrl.indexOf(props.ARCHIVE_FOLDER_ID) > 0); });
-const upd = updateDocument(f3.getId(), { mittente: 'Enel Energia', titolo: 'Bolletta luce', dataDocumento: '2026-08-31', soggetti: 'Serena, Andrea Agnoli', scadenza: 'boh' });
-t('updateDocument rinomina, aggiorna riga, stato Verificato', () => { assert.strictEqual(upd.stato, 'Verificato'); assert.strictEqual(f3.getName(), '2026-08-31_Utenze_Luce_Enel-Energia_Serena_Bolletta-luce.pdf'); const r = getIndexRow(f3.getId()); assert.strictEqual(r.nomeFile, f3.getName()); assert.strictEqual(r.soggetti, 'Serena, Andrea Agnoli'); assert.strictEqual(r.scadenza, ''); assert.strictEqual(f3.appProperties.stato, 'Verificato'); });
-t('senza permessi di modifica updateDocument rifiuta', () => { G.__canEdit = false; assert.throws(() => updateDocument(f3.getId(), { titolo: 'x' }), /permessi/); G.__canEdit = true; });
-const up = uploadToInbox(Buffer.from(pdfBytes).toString('base64'), 'foto-documento.pdf', 'application/pdf');
-t('uploadToInbox crea il file nella Inbox', () => { const n = nodes[up.id]; assert.strictEqual(n.parent, inbox); assert.strictEqual(n.getSize(), pdfBytes.length); });
-
+console.log('6. API del sito (login Google + azioni)');
+const CLIENT='123-abc.apps.googleusercontent.com';
+ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='GOOGLE_CLIENT_ID') r[1]=CLIENT; if (r[0]==='ALLOWED_EMAILS') r[1]='serena@example.com, andrea.agnoli.1984@gmail.com'; if (r[0]==='EDITOR_EMAILS') r[1]='andrea.agnoli.1984@gmail.com'; if (r[0]==='SITE_URL') r[1]='https://example.github.io/archivio/'; });
+const tokens = { good: { aud: CLIENT, email: 'serena@example.com', email_verified: 'true', exp: String(Math.floor(Date.now()/1000)+3600), name: 'Serena', picture: 'p' },
+  editor: { aud: CLIENT, email: 'andrea.agnoli.1984@gmail.com', email_verified: 'true', exp: String(Math.floor(Date.now()/1000)+3600), name: 'Andrea' },
+  wrongaud: { aud: 'other', email: 'serena@example.com', email_verified: 'true', exp: String(Math.floor(Date.now()/1000)+3600) },
+  stranger: { aud: CLIENT, email: 'hacker@example.com', email_verified: 'true', exp: String(Math.floor(Date.now()/1000)+3600) } };
+let tokenCalls = 0;
+G.__httpHandler = (url, opts) => {
+  if (url.indexOf('tokeninfo') >= 0) { tokenCalls++; const t = decodeURIComponent(url.split('id_token=')[1]); return tokens[t] ? { code: 200, body: tokens[t] } : { code: 400, body: { error: 'invalid' } }; }
+  return claudeOk(bolletta);
+};
+const call = (payload) => JSON.parse(doPost({ postData: { contents: JSON.stringify(payload) }, parameter: {} })._text);
+t('visita senza action -> pagina di redirect al sito', () => { const out = doGet({ parameter: {} }); assert.ok(out._html.indexOf('example.github.io') > 0); });
+t('senza token -> login_required', () => { const r = call({ action: 'index' }); assert.strictEqual(r.ok, false); assert.strictEqual(r.code, 'login_required'); });
+t('token con client id sbagliato -> rifiutato', () => { const r = call({ action: 'index', token: 'wrongaud' }); assert.strictEqual(r.code, 'forbidden'); });
+t('account non in lista -> rifiutato', () => { const r = call({ action: 'index', token: 'stranger' }); assert.strictEqual(r.code, 'forbidden'); assert.ok(r.error.indexOf('hacker@example.com') >= 0); });
+t('Serena (in lista) -> indice, non editor', () => { const r = call({ action: 'index', token: 'good' }); assert.strictEqual(r.ok, true); assert.ok(r.data.docs.length >= 8); assert.strictEqual(r.user.email, 'serena@example.com'); assert.strictEqual(r.user.canEdit, false); assert.ok(r.data.categories.Salute.length > 0); });
+t('verifica token in cache (una sola chiamata a Google)', () => { const before = tokenCalls; call({ action: 'index', token: 'good' }); call({ action: 'me', token: 'good' }); assert.strictEqual(tokenCalls, before); });
+t('Serena non può modificare né caricare', () => { assert.strictEqual(call({ action: 'update', token: 'good', id: f3.getId(), fields: { titolo: 'x' } }).code, 'forbidden'); assert.strictEqual(call({ action: 'upload', token: 'good', data: 'AAAA', name: 'a.pdf' }).code, 'forbidden'); });
+t('file: contenuto base64 di un documento indicizzato, rifiuto per file estranei', () => { const r = call({ action: 'file', token: 'good', id: f1.getId() }); assert.strictEqual(r.ok, true); assert.strictEqual(Buffer.from(r.data.base64, 'base64').length, pdfBytes.length); assert.strictEqual(r.data.mime, 'application/pdf'); const other = G.__mkfile(root, 'segreto.pdf', pdfBytes, 'application/pdf'); assert.strictEqual(call({ action: 'file', token: 'good', id: other.getId() }).code, 'not_found'); });
+const upd = call({ action: 'update', token: 'editor', id: f3.getId(), fields: { mittente: 'Enel Energia', titolo: 'Bolletta luce', dataDocumento: '2026-08-31', soggetti: 'Serena, Andrea Agnoli', scadenza: 'boh', paroleChiave: 'luce, enel' } }).data;
+t('Andrea (editor) modifica: rinomina, aggiorna riga, stato Verificato', () => { assert.strictEqual(upd.stato, 'Verificato'); assert.strictEqual(f3.getName(), '2026-08-31_Utenze_Luce_Enel-Energia_Serena_Bolletta-luce.pdf'); const r = getIndexRow(f3.getId()); assert.strictEqual(r.nomeFile, f3.getName()); assert.strictEqual(r.soggetti, 'Serena, Andrea Agnoli'); assert.strictEqual(r.scadenza, ''); assert.strictEqual(r.paroleChiave, 'luce, enel'); });
+const up = call({ action: 'upload', token: 'editor', data: Buffer.from(pdfBytes).toString('base64'), name: 'foto-documento.pdf', mime: 'application/pdf' }).data;
+t('upload dell\'editor finisce nella Inbox', () => { const n = nodes[up.id]; assert.strictEqual(n.parent, inbox); assert.strictEqual(n.getSize(), pdfBytes.length); });
+G.__http.length = 0;
+G.__httpHandler = (url) => url.indexOf('tokeninfo') >= 0 ? { code: 200, body: tokens.good } : { code: 200, body: { model: 'claude-opus-5', stop_reason: 'end_turn', usage: { input_tokens: 900, output_tokens: 80 }, content: [{ type: 'text', text: JSON.stringify({ risposta: 'La bolletta della luce scade il 2026-09-20.', documenti: [f1.getId(), 'inesistente'] }) }] } };
+const ans = call({ action: 'ask', token: 'good', question: 'Quando scade la bolletta della luce?', history: [{ role: 'user', text: 'ciao' }, { role: 'assistant', text: 'ciao!' }] });
+t('chiedi: risposta con documenti citati (solo ID validi), schede nel prompt', () => { assert.strictEqual(ans.ok, true); assert.ok(ans.data.answer.indexOf('2026-09-20') > 0); assert.strictEqual(ans.data.docs.length, 1); assert.strictEqual(ans.data.docs[0].id, f1.getId()); const body = JSON.parse(G.__http.filter(h => h.url.indexOf('anthropic') >= 0)[0].opts.payload); assert.ok(body.messages[body.messages.length - 1].content.indexOf('SCHEDE DOCUMENTI') === 0); assert.strictEqual(body.messages.length, 3); assert.strictEqual(body.output_config.format.type, 'json_schema'); });
+t('chiedi: domanda vuota rifiutata', () => { assert.strictEqual(call({ action: 'ask', token: 'good', question: '  ' }).code, 'bad_request'); });
+t('azione sconosciuta -> bad_request', () => { assert.strictEqual(call({ action: 'boh', token: 'good' }).code, 'bad_request'); });
 console.log('7. export Excel e reindex');
 G.__httpHandler = (url) => ({ code: 200, body: '', bytes: [80, 75, 3, 4] });
 for (let i = 0; i < 14; i++) { exportIndexXlsx(); backup.children.forEach((c, k) => { if (/^Indice_/.test(c.name) && !c.trashed) c.name = 'Indice_2026-01-' + String(k + 1).padStart(2, '0') + '.xlsx'; }); }
