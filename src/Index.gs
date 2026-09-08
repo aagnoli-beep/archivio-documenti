@@ -81,7 +81,7 @@ function logEvent(level, fileName, message) {
 
 /**
  * Esporta il foglio Indice in formato Excel nella cartella Backup.
- * Trigger settimanale (lunedì 03:00). Tiene solo gli ultimi N export.
+ * Trigger giornaliero (03:00). Tiene solo gli ultimi N export.
  */
 function exportIndexXlsx() {
   var cfg = getConfig();

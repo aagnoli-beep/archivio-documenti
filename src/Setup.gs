@@ -69,7 +69,7 @@ function setupProject() {
     (apiKey ? '' : '\n\nRICORDA: imposta la Script Property ANTHROPIC_API_KEY (Impostazioni progetto > Proprietà dello script).'));
 }
 
-/** (Re)installa i trigger: processInbox ogni 5 minuti, export Excel ogni lunedì alle 3. */
+/** (Re)installa i trigger: processInbox ogni 5 minuti, export Excel ogni notte alle 3. */
 function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'processInbox' || t.getHandlerFunction() === 'exportIndexXlsx') {
@@ -77,7 +77,7 @@ function installTriggers() {
     }
   });
   ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(5).create();
-  ScriptApp.newTrigger('exportIndexXlsx').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(3).create();
+  ScriptApp.newTrigger('exportIndexXlsx').timeBased().everyDays(1).atHour(3).create();
 }
 
 function getOrCreateFolder_(parent, name, knownId) {

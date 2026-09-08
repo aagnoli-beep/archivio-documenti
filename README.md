@@ -10,7 +10,7 @@ ScanSnap iX2500 ──ScanSnap Cloud (Wi-Fi, senza PC)──▶ Drive: Archivio 
       ┌───────────────────────────────────────────────────────┼──────────────────────────┐
       ▼                                                       ▼                          ▼
  Claude API (PDF → JSON metadati)          rinomina + sposta in "Archivio"        riga nel Google Sheet "Indice"
-                                           + descrizione/proprietà Drive          (+ export .xlsx settimanale in "Backup")
+                                           + descrizione/proprietà Drive          (+ export .xlsx ogni notte in "Backup")
                                                               │
                                     Web app Apps Script (mobile-first, login Google)
                                     ricerca / filtri / anteprima / download / correzione metadati
@@ -45,7 +45,7 @@ Stato: API Apps Script attiva, codice caricato, `setupProject` eseguito (cartell
 Archivio Documenti/
   00_Inbox/          ← destinazione di ScanSnap Cloud (e degli upload dal sito)
   Archivio/          ← tutti i documenti rinominati, in un'unica cartella
-  Backup/            ← Indice_YYYY-MM-DD.xlsx (ultimi 12)
+  Backup/            ← Indice_YYYY-MM-DD.xlsx (ultimi 12, uno per notte)
   Archivio Documenti - Indice   ← Google Sheet con i fogli Indice, Config, Categorie, Log
 ```
 
@@ -86,7 +86,7 @@ npx clasp open
 Nell'editor Apps Script:
 1. **Impostazioni progetto** (ingranaggio) → *Proprietà dello script* → aggiungi `ANTHROPIC_API_KEY` = la chiave del punto 1.
 2. Apri `Setup.gs`, seleziona la funzione `setupProject` e premi **Esegui**. Alla prima esecuzione Google chiede di autorizzare lo script (Drive, Fogli, email, chiamate esterne): accetta. Se compare "app non verificata" → *Avanzate* → *Vai a … (non sicuro)*: è normale per gli script personali.
-3. Il setup crea le cartelle su Drive, i fogli con le intestazioni e due trigger (`processInbox` ogni 5 minuti, `exportIndexXlsx` ogni lunedì alle 3). Nel log di esecuzione trovi il link alla cartella `00_Inbox`.
+3. Il setup crea le cartelle su Drive, i fogli con le intestazioni e due trigger (`processInbox` ogni 5 minuti, `exportIndexXlsx` ogni notte alle 3). Nel log di esecuzione trovi il link alla cartella `00_Inbox`.
 
 Facoltativo: nel foglio **Config** puoi cambiare email per gli avvisi, soglia di confidenza, modello e nomi dei familiari; nel foglio **Categorie** puoi aggiungere o rinominare categorie e sottocategorie. Nessuna modifica al codice.
 
@@ -142,7 +142,7 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 - **Documento in Archivio senza riga nel foglio**: esegui `reindexMissing()` in Apps Script.
 - **Test manuale della classificazione** senza spostare nulla: metti un PDF in Inbox ed esegui `testClassifyFirstInboxFile()`, il risultato JSON è nel log di esecuzione.
 - **Cambiare modello o costi**: nel foglio `Config` la riga `MODEL` (es. `claude-haiku-4-5` costa circa 5 volte meno, con classificazioni un po' meno precise).
-- **Backup**: ogni lunedì un file Excel dell'indice in `Backup/`. Puoi anche generarlo subito eseguendo `exportIndexXlsx()`.
+- **Backup**: ogni notte un file Excel dell'indice in `Backup/`, copiato anche su iCloud come `Indice.xlsx`. Puoi anche generarlo subito eseguendo `exportIndexXlsx()`.
 
 ## Struttura del codice (`src/`)
 | File | Cosa fa |

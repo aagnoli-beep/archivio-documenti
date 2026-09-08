@@ -118,7 +118,7 @@ G.ScriptApp = {
   WeekDay: { MONDAY: 'MONDAY' },
   getProjectTriggers: () => G.__triggers.slice(),
   deleteTrigger: (t) => { G.__triggers = G.__triggers.filter(x => x !== t); },
-  newTrigger: (fn) => { const t = { getHandlerFunction: () => fn, spec: [] }; const b = { timeBased: () => b, everyMinutes: (n) => { t.spec.push('every ' + n + ' min'); return b; }, onWeekDay: (d) => { t.spec.push(d); return b; }, atHour: (h) => { t.spec.push('at ' + h); return b; }, create: () => { G.__triggers.push(t); return t; } }; return b; },
+  newTrigger: (fn) => { const t = { getHandlerFunction: () => fn, spec: [] }; const b = { timeBased: () => b, everyMinutes: (n) => { t.spec.push('every ' + n + ' min'); return b; }, onWeekDay: (d) => { t.spec.push(d); return b; }, everyDays: (n) => { t.spec.push('every ' + n + ' day'); return b; }, atHour: (h) => { t.spec.push('at ' + h); return b; }, create: () => { G.__triggers.push(t); return t; } }; return b; },
   getOAuthToken: () => 'tok'
 };
 G.MailApp = { sendEmail: (m) => { G.__mail.push(m); } };
