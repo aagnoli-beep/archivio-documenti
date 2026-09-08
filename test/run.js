@@ -54,7 +54,7 @@ const f4 = G.__mkfile(inbox, 'Scan_0004.pdf', pdfBytes, 'application/pdf'); proc
 t('categoria non ammessa -> Altro + Da verificare', () => { const r = getIndexRow(f4.getId()); assert.strictEqual(r.categoria, 'Altro'); assert.strictEqual(r.stato, 'Da verificare'); assert.ok(f4.getName().indexOf('_Altro_') > 0); });
 G.__httpHandler = () => claudeOk(Object.assign({}, bolletta, { data_documento: '', confidenza: 0.95 }));
 const f5 = G.__mkfile(inbox, 'Scan_0005.pdf', pdfBytes, 'application/pdf'); processInbox();
-t('data mancante -> data di scansione + Da verificare', () => { const r = getIndexRow(f5.getId()); assert.strictEqual(r.dataDocumento, Utilities.formatDate(f5.getDateCreated(), '', 'yyyy-MM-dd')); assert.strictEqual(r.stato, 'Da verificare'); });
+t('data mancante -> data di scansione, stato Auto', () => { const r = getIndexRow(f5.getId()); assert.strictEqual(r.dataDocumento, Utilities.formatDate(f5.getDateCreated(), '', 'yyyy-MM-dd')); assert.strictEqual(r.stato, 'Auto'); });
 
 console.log('4. errori API');
 G.__httpHandler = () => ({ code: 401, body: { error: { message: 'invalid x-api-key' } } });

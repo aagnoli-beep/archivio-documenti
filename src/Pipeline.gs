@@ -109,7 +109,7 @@ function normalizeMeta_(raw, file, cfg) {
     nomeOriginale: file.getName(),
     paroleChiave: Array.isArray(raw.parole_chiave) ? raw.parole_chiave.map(function (s) { return String(s).trim(); }).filter(Boolean).join(', ') : ''
   };
-  if (!dataDoc) meta.stato = STATO.DA_VERIFICARE;   // data mancante: meglio un controllo umano
+  // Data mancante sul documento: si usa la data di scansione senza segnalare nulla (scelta di Andrea).
   return meta;
 }
 
@@ -187,4 +187,22 @@ function reindexMissing() {
   }
   logEvent('INFO', '', 'reindexMissing: aggiunte ' + added + ' righe');
   console.log('Aggiunte ' + added + ' righe');
+}
+
+/**
+ * Manutenzione: riporta a "Auto" tutti i documenti segnati "Da verificare".
+ * Da eseguire a mano dall'editor quando si vuole azzerare le segnalazioni.
+ */
+function unflagAll() {
+  var sh = getSheet_(SHEET.INDEX);
+  var last = sh.getLastRow();
+  if (last < 2) { console.log('Indice vuoto'); return; }
+  var col = INDEX_COLUMNS.map(function (c) { return c.key; }).indexOf('stato') + 1;
+  var range = sh.getRange(2, col, last - 1, 1);
+  var values = range.getValues();
+  var n = 0;
+  values.forEach(function (r) { if (r[0] === STATO.DA_VERIFICARE) { r[0] = STATO.AUTO; n++; } });
+  range.setValues(values);
+  logEvent('INFO', '', 'unflagAll: ' + n + ' documenti riportati ad Auto');
+  console.log(n + ' documenti riportati ad Auto');
 }
