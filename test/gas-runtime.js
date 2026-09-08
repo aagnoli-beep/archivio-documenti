@@ -100,7 +100,7 @@ G.PropertiesService = { getScriptProperties: () => ({
   setProperty: (k, v) => { G.__props[k] = String(v); }, setProperties: (o) => { Object.keys(o).forEach(k => G.__props[k] = String(o[k])); },
   deleteProperty: (k) => { delete G.__props[k]; }
 }) };
-G.MimeType = { PDF: 'application/pdf', JPEG: 'image/jpeg', PNG: 'image/png' };
+G.MimeType = { PDF: 'application/pdf', JPEG: 'image/jpeg', PNG: 'image/png', GOOGLE_SHEETS: 'application/vnd.google-apps.spreadsheet' };
 G.Utilities = {
   formatDate: (d, tz, fmt) => { const p = (n) => String(n).padStart(2, '0'); const s = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; return fmt.indexOf('HH') >= 0 ? s + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) : s; },
   base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),

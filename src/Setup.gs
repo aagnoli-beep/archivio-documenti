@@ -23,6 +23,11 @@ function setupProject() {
   var ssId = props.getProperty(PROP.SPREADSHEET_ID);
   if (ssId) { try { ss = SpreadsheetApp.openById(ssId); } catch (e) { ss = null; } }
   if (!ss) ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    // Progetto indipendente: riusa il foglio già presente nella cartella, se c'è.
+    var existing = root.getFilesByName(FOLDER_NAMES.ROOT + ' - Indice');
+    while (existing.hasNext()) { var f = existing.next(); if (f.getMimeType() === MimeType.GOOGLE_SHEETS && !f.isTrashed()) { ss = SpreadsheetApp.openById(f.getId()); break; } }
+  }
   if (!ss) ss = SpreadsheetApp.create(FOLDER_NAMES.ROOT + ' - Indice');
   props.setProperty(PROP.SPREADSHEET_ID, ss.getId());
   var ssFile = DriveApp.getFileById(ss.getId());
@@ -114,4 +119,11 @@ function ensureHeaders_(sheet, headers) {
   if (!same) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
   }
+}
+
+/** Rimuove tutti i trigger di questo progetto (usato quando il backend viene spostato su un altro progetto). */
+function removeAllTriggers() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); n++; });
+  console.log('Rimossi ' + n + ' trigger');
 }
