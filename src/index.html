@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <title>Archivio Documenti</title>
+  <?!= include('style'); ?>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <h1>Archivio Documenti</h1>
+      <div class="top-right">
+        <span id="user" class="user"></span>
+        <button id="btnUpload" class="btn small" hidden>Carica</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="search">
+      <input id="q" type="search" placeholder="Cerca: visita, Enel, Andrea, 2025..." autocomplete="off" autocapitalize="off">
+    </div>
+    <div class="filters">
+      <select id="fCat" aria-label="Categoria"><option value="">Tutte le categorie</option></select>
+      <select id="fSub" aria-label="Soggetto"><option value="">Tutti i soggetti</option></select>
+      <select id="fYear" aria-label="Anno"><option value="">Tutti gli anni</option></select>
+      <select id="fStato" aria-label="Stato"><option value="">Tutti gli stati</option></select>
+    </div>
+
+    <div id="banner" class="banner" hidden></div>
+    <div id="summary" class="summary">Caricamento...</div>
+    <ul id="list" class="list"></ul>
+    <button id="more" class="btn secondary wide" hidden>Mostra altri</button>
+    <p id="empty" class="empty" hidden>Nessun documento trovato.</p>
+    <p class="foot"><a id="sheetLink" href="#" target="_blank" rel="noopener">Apri l'indice (foglio)</a> · <a id="archiveLink" href="#" target="_blank" rel="noopener">Apri la cartella Archivio</a></p>
+  </main>
+
+  <input id="fileInput" type="file" accept="application/pdf,image/*" hidden>
+
+  <div id="overlay" class="overlay" hidden></div>
+  <section id="detail" class="sheet" hidden aria-modal="true" role="dialog">
+    <div class="sheet-head">
+      <button id="btnClose" class="icon" aria-label="Chiudi">&larr;</button>
+      <h2 id="dTitle"></h2>
+    </div>
+    <div class="sheet-body">
+      <div id="dBadges" class="badges"></div>
+      <div id="dActions" class="actions">
+        <a id="dOpen" class="btn" href="#" target="_blank" rel="noopener">Apri in Drive</a>
+        <a id="dDownload" class="btn secondary" href="#" target="_blank" rel="noopener">Scarica</a>
+        <button id="btnEdit" class="btn secondary" hidden>Modifica</button>
+      </div>
+      <dl id="dMeta" class="meta"></dl>
+      <div class="preview">
+        <iframe id="dPreview" title="Anteprima documento" allow="autoplay" loading="lazy"></iframe>
+      </div>
+
+      <form id="editForm" class="edit" hidden autocomplete="off">
+        <h3>Correggi i metadati</h3>
+        <label>Categoria <select name="categoria" id="eCat"></select></label>
+        <label>Sottocategoria <input name="sottocategoria" list="subList"><datalist id="subList"></datalist></label>
+        <label>Sotto-sottocategoria <input name="sottoSottocategoria"></label>
+        <label>Tipo documento <input name="tipoDocumento"></label>
+        <label>Mittente <input name="mittente"></label>
+        <label>Destinatario <input name="destinatario"></label>
+        <label>Soggetti (separati da virgola) <input name="soggetti"></label>
+        <label>Data documento <input name="dataDocumento" type="date"></label>
+        <label>Titolo <input name="titolo" required></label>
+        <label>Riassunto <textarea name="riassunto" rows="3"></textarea></label>
+        <label>Importo <input name="importo"></label>
+        <label>Scadenza <input name="scadenza" type="date"></label>
+        <div class="actions">
+          <button type="submit" class="btn">Salva</button>
+          <button type="button" id="btnCancel" class="btn secondary">Annulla</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <?!= include('app'); ?>
+</body>
+</html>

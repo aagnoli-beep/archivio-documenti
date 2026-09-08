@@ -1,0 +1,230 @@
+<script>
+(function () {
+  'use strict';
+  var PAGE = 100;
+  var state = { docs: [], filtered: [], shown: 0, canEdit: false, categories: {}, family: [], current: null, meta: null };
+  function $(id) { return document.getElementById(id); }
+  function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function toast(msg, ms) { var t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, ms || 2500); }
+  function fmtDate(d) {
+    if (!d) return '';
+    var m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : String(d);
+  }
+
+  // ---------- caricamento ----------
+  function load() {
+    $('summary').textContent = 'Caricamento...';
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onError).getIndex();
+  }
+  function onError(err) {
+    $('summary').textContent = 'Errore: ' + (err && err.message ? err.message : err);
+    toast('Errore nel caricamento. Hai accesso alla cartella condivisa?', 5000);
+  }
+  function onData(data) {
+    state.docs = (data.docs || []).map(prepareDoc);
+    state.docs.sort(function (a, b) { return a.dataDocumento < b.dataDocumento ? 1 : a.dataDocumento > b.dataDocumento ? -1 : 0; });
+    state.canEdit = !!data.canEdit;
+    state.categories = data.categories || {};
+    state.family = data.family || [];
+    $('user').textContent = data.user || '';
+    $('btnUpload').hidden = !state.canEdit;
+    $('sheetLink').href = data.sheetUrl || '#';
+    $('archiveLink').href = data.archiveUrl || '#';
+    buildFilters();
+    applyFilters();
+    if (state.current) { var cur = state.docs.filter(function (d) { return d.id === state.current; })[0]; if (cur) fillDetail(cur); }
+  }
+  function prepareDoc(d) {
+    d.hay = norm([d.titolo, d.nomeFile, d.categoria, d.sottocategoria, d.sottoSottocategoria, d.tipoDocumento, d.mittente,
+      d.destinatario, d.soggetti, d.riassunto, d.importo, d.dataDocumento, d.scadenza, d.nomeOriginale].join(' | '));
+    d.year = String(d.dataDocumento || '').substring(0, 4);
+    d.soggettiList = String(d.soggetti || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    return d;
+  }
+
+  // ---------- filtri ----------
+  function fillSelect(sel, values, keepFirst) {
+    var current = sel.value;
+    while (sel.options.length > (keepFirst ? 1 : 0)) sel.remove(sel.options.length - 1);
+    values.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+    sel.value = values.indexOf(current) >= 0 ? current : '';
+  }
+  function uniq(arr) { var seen = {}; return arr.filter(function (v) { if (!v || seen[v]) return false; seen[v] = true; return true; }); }
+  function buildFilters() {
+    fillSelect($('fCat'), uniq(Object.keys(state.categories).concat(state.docs.map(function (d) { return d.categoria; }))), true);
+    var subs = {};
+    state.docs.forEach(function (d) { d.soggettiList.forEach(function (s) { subs[s] = (subs[s] || 0) + 1; }); });
+    var subList = Object.keys(subs).sort(function (a, b) { return subs[b] - subs[a]; });
+    fillSelect($('fSub'), subList, true);
+    fillSelect($('fYear'), uniq(state.docs.map(function (d) { return d.year; })).sort().reverse(), true);
+    fillSelect($('fStato'), uniq(state.docs.map(function (d) { return d.stato; })), true);
+    if (state.docs.some(function (d) { return d.stato === 'Da verificare' || d.stato === 'Non classificato'; })) {
+      var o = document.createElement('option'); o.value = '__check'; o.textContent = 'Da controllare (tutti)'; $('fStato').appendChild(o);
+    }
+  }
+  function applyFilters() {
+    var q = norm($('q').value).split(/\s+/).filter(Boolean);
+    var cat = $('fCat').value, sub = $('fSub').value, year = $('fYear').value, stato = $('fStato').value;
+    state.filtered = state.docs.filter(function (d) {
+      if (cat && d.categoria !== cat) return false;
+      if (sub && d.soggettiList.indexOf(sub) < 0) return false;
+      if (year && d.year !== year) return false;
+      if (stato === '__check') { if (d.stato !== 'Da verificare' && d.stato !== 'Non classificato') return false; }
+      else if (stato && d.stato !== stato) return false;
+      for (var i = 0; i < q.length; i++) if (d.hay.indexOf(q[i]) < 0) return false;
+      return true;
+    });
+    state.shown = 0;
+    $('list').innerHTML = '';
+    renderMore();
+    var toCheck = state.docs.filter(function (d) { return d.stato === 'Da verificare' || d.stato === 'Non classificato'; }).length;
+    var b = $('banner');
+    b.hidden = !(toCheck && state.canEdit && !stato);
+    if (!b.hidden) b.textContent = toCheck + (toCheck === 1 ? ' documento da verificare' : ' documenti da verificare') + ' - tocca per vederli';
+    $('summary').textContent = state.filtered.length === state.docs.length
+      ? state.docs.length + ' documenti in archivio'
+      : state.filtered.length + ' di ' + state.docs.length + ' documenti';
+  }
+  function tagClass(stato) { return stato === 'Verificato' ? 'ok' : stato === 'Auto' ? '' : stato === 'Non classificato' ? 'bad' : 'warn'; }
+  function renderMore() {
+    var frag = document.createDocumentFragment();
+    var slice = state.filtered.slice(state.shown, state.shown + PAGE);
+    slice.forEach(function (d) {
+      var li = document.createElement('li');
+      li.className = 'card';
+      li.setAttribute('data-id', d.id);
+      li.innerHTML =
+        '<div class="t">' + esc(d.titolo || d.nomeFile) + '</div>' +
+        '<div class="d">' + esc(fmtDate(d.dataDocumento)) + '</div>' +
+        '<div class="s">' + (d.mittente ? '<b>' + esc(d.mittente) + '</b>' : '') +
+          (d.soggettiList.length ? ' · ' + esc(d.soggettiList.join(', ')) : '') + '</div>' +
+        '<div class="s"><span class="tag">' + esc(d.categoria) + (d.sottocategoria ? ' › ' + esc(d.sottocategoria) : '') + '</span>' +
+          (d.stato && d.stato !== 'Auto' ? '<span class="tag ' + tagClass(d.stato) + '">' + esc(d.stato) + '</span>' : '') + '</div>';
+      frag.appendChild(li);
+    });
+    $('list').appendChild(frag);
+    state.shown += slice.length;
+    $('more').hidden = state.shown >= state.filtered.length;
+    $('empty').hidden = state.filtered.length > 0;
+  }
+
+  // ---------- scheda documento ----------
+  function openDetail(id) {
+    var d = state.docs.filter(function (x) { return x.id === id; })[0];
+    if (!d) return;
+    state.current = id;
+    fillDetail(d);
+    $('editForm').hidden = true;
+    $('overlay').hidden = false;
+    $('detail').hidden = false;
+    $('detail').scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+    $('dPreview').src = 'https://drive.google.com/file/d/' + encodeURIComponent(id) + '/preview';
+  }
+  function closeDetail() {
+    state.current = null;
+    $('detail').hidden = true;
+    $('overlay').hidden = true;
+    $('dPreview').src = 'about:blank';
+    document.body.style.overflow = '';
+  }
+  function fillDetail(d) {
+    state.meta = d;
+    $('dTitle').textContent = d.titolo || d.nomeFile;
+    $('dBadges').innerHTML = '<span class="tag">' + esc(d.categoria) + (d.sottocategoria ? ' › ' + esc(d.sottocategoria) : '') +
+      (d.sottoSottocategoria ? ' › ' + esc(d.sottoSottocategoria) : '') + '</span>' +
+      '<span class="tag ' + tagClass(d.stato) + '">' + esc(d.stato || '') + (d.confidenza ? ' · ' + Math.round(d.confidenza * 100) + '%' : '') + '</span>';
+    $('dOpen').href = 'https://drive.google.com/file/d/' + encodeURIComponent(d.id) + '/view';
+    $('dDownload').href = 'https://drive.google.com/uc?export=download&id=' + encodeURIComponent(d.id);
+    $('btnEdit').hidden = !state.canEdit;
+    var rows = [
+      ['Data documento', fmtDate(d.dataDocumento)], ['Tipo', d.tipoDocumento], ['Mittente', d.mittente], ['Destinatario', d.destinatario],
+      ['Soggetti', d.soggetti], ['Importo', d.importo], ['Scadenza', fmtDate(d.scadenza)], ['Riassunto', d.riassunto],
+      ['Pagine', d.pagine], ['Scansionato il', d.dataScansione], ['Nome file', d.nomeFile]
+    ];
+    $('dMeta').innerHTML = rows.filter(function (r) { return r[1] !== '' && r[1] != null; })
+      .map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
+  }
+
+  // ---------- modifica ----------
+  function startEdit() {
+    var d = state.meta; if (!d) return;
+    var f = $('editForm');
+    var cat = $('eCat');
+    fillSelect(cat, Object.keys(state.categories), false);
+    if (Object.keys(state.categories).indexOf(d.categoria) < 0) { var o = document.createElement('option'); o.value = d.categoria; o.textContent = d.categoria; cat.appendChild(o); }
+    cat.value = d.categoria;
+    updateSubList();
+    ['sottocategoria', 'sottoSottocategoria', 'tipoDocumento', 'mittente', 'destinatario', 'soggetti', 'dataDocumento', 'titolo', 'riassunto', 'importo', 'scadenza']
+      .forEach(function (k) { f.elements[k].value = d[k] || ''; });
+    f.hidden = false;
+    f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function updateSubList() {
+    var dl = $('subList'); dl.innerHTML = '';
+    (state.categories[$('eCat').value] || []).forEach(function (s) { var o = document.createElement('option'); o.value = s; dl.appendChild(o); });
+  }
+  function saveEdit(ev) {
+    ev.preventDefault();
+    var f = $('editForm');
+    var fields = {};
+    Array.prototype.forEach.call(f.elements, function (el) { if (el.name) fields[el.name] = el.value; });
+    var btn = f.querySelector('button[type=submit]'); btn.disabled = true; btn.textContent = 'Salvo...';
+    google.script.run
+      .withSuccessHandler(function (meta) {
+        btn.disabled = false; btn.textContent = 'Salva';
+        var idx = state.docs.findIndex(function (x) { return x.id === meta.id; });
+        var prepared = prepareDoc(meta);
+        if (idx >= 0) state.docs[idx] = prepared; else state.docs.push(prepared);
+        f.hidden = true;
+        fillDetail(prepared);
+        buildFilters();
+        applyFilters();
+        toast('Salvato: file rinominato e indice aggiornato');
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false; btn.textContent = 'Salva';
+        toast('Errore: ' + (err && err.message ? err.message : err), 5000);
+      })
+      .updateDocument(state.current, fields);
+  }
+
+  // ---------- upload ----------
+  function onFileChosen() {
+    var file = $('fileInput').files[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) { toast('File troppo grande (max 25 MB)', 4000); return; }
+    var reader = new FileReader();
+    toast('Carico ' + file.name + '...', 60000);
+    reader.onload = function () {
+      var b64 = String(reader.result).split(',')[1];
+      google.script.run
+        .withSuccessHandler(function (r) { toast('Caricato in Inbox: ' + r.name + '. Verrà classificato entro pochi minuti.', 5000); $('fileInput').value = ''; })
+        .withFailureHandler(function (err) { toast('Errore upload: ' + (err && err.message ? err.message : err), 5000); $('fileInput').value = ''; })
+        .uploadToInbox(b64, file.name, file.type || 'application/pdf');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ---------- eventi ----------
+  var debounce;
+  $('q').addEventListener('input', function () { clearTimeout(debounce); debounce = setTimeout(applyFilters, 120); });
+  ['fCat', 'fSub', 'fYear', 'fStato'].forEach(function (id) { $(id).addEventListener('change', applyFilters); });
+  $('list').addEventListener('click', function (e) { var li = e.target.closest('li[data-id]'); if (li) openDetail(li.getAttribute('data-id')); });
+  $('more').addEventListener('click', renderMore);
+  $('banner').addEventListener('click', function () { $('fStato').value = '__check'; applyFilters(); });
+  $('btnClose').addEventListener('click', closeDetail);
+  $('overlay').addEventListener('click', closeDetail);
+  $('btnEdit').addEventListener('click', startEdit);
+  $('btnCancel').addEventListener('click', function () { $('editForm').hidden = true; });
+  $('eCat').addEventListener('change', updateSubList);
+  $('editForm').addEventListener('submit', saveEdit);
+  $('btnUpload').addEventListener('click', function () { $('fileInput').click(); });
+  $('fileInput').addEventListener('change', onFileChosen);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('detail').hidden) closeDetail(); });
+
+  load();
+})();
+</script>
