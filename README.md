@@ -24,6 +24,21 @@ ScanSnap iX2500 ──ScanSnap Cloud (Wi-Fi, senza PC)──▶ Drive: Archivio 
 
 **Se la chiave Claude smette di funzionare** (credito finito, chiave revocata): i documenti restano intatti in `00_Inbox`, il foglio `Log` registra l'errore e arriva un'email di avviso (al massimo una al giorno). Appena il problema è risolto, il trigger riprende da solo. Lo script **non cancella mai** un documento.
 
+## Installazione fatta (8 settembre 2026)
+
+Account Google dell'archivio: **andrea.agnoli.1984@gmail.com**.
+
+| Cosa | Link |
+|---|---|
+| Sito web (famiglia) | https://script.google.com/macros/s/AKfycbzFON9VwVZtyPAcsZqVuj-P-SWHuklhJ4YRj3yDmG3USSskVutTblGyswqxkZ1XXGzppg/exec |
+| Foglio indice | https://docs.google.com/spreadsheets/d/1D-yGxNaE58fpZ9xANT29jXiqRpt0MIC2BbRMYdulW34/edit |
+| Cartella Inbox (destinazione ScanSnap Cloud) | https://drive.google.com/drive/folders/1cSY8IMJlMCVOuF8r2Hw4kGoEDe-W1Xwl |
+| Editor Apps Script | https://script.google.com/home/projects/12E9zjj4Uw8QeFdst_BsSscqSa8KQVAQlzTkyZt1RoNxvyixaKsjQt5xA/edit |
+
+Stato: API Apps Script attiva, codice caricato, `setupProject` eseguito (cartelle, fogli, trigger), chiave API impostata, prima classificazione reale riuscita (bolletta di prova → `Utenze / Luce`, confidenza 0.95), sito pubblicato come app web (esegui come utente che accede, chiunque con account Google).
+
+**Se il sito mostra la pagina Drive "Impossibile aprire il file in questo momento"**: è un difetto noto di Google quando nel browser sono collegati più account Google contemporaneamente. Aprilo in una finestra in incognito (o in un profilo Chrome con il solo account di famiglia) e accedi con l'account giusto; alla prima apertura premi *Rivedi autorizzazioni → Avanzate → Apri Archivio Documenti (non sicura) → Seleziona tutto → Continua*. Sul telefono, dove di solito c'è un solo account, il problema non si presenta.
+
 ## Struttura su Drive
 
 ```
