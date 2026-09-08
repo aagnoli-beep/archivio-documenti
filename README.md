@@ -1,6 +1,6 @@
 # Archivio Documenti di famiglia
 
-Ogni documento cartaceo che arriva a casa viene scansionato con lo **ScanSnap iX2500**, finisce su **Google Drive**, viene letto e classificato da **Claude** (categoria, sottocategoria, tipo, mittente, destinatario, soggetti, date, riassunto), rinominato con i metadati nel nome e indicizzato in un **Google Sheet**. Un piccolo **sito web** (anche da telefono) permette alla famiglia di cercare, vedere, scaricare e correggere i documenti.
+Ogni documento cartaceo che arriva a casa viene scansionato con lo **ScanSnap iX2500**, finisce su **Google Drive**, viene letto e classificato da **Claude** (categoria, sottocategoria, tipo, mittente, destinatario, soggetti, date, riassunto), rinominato con i metadati nel nome e indicizzato in un **Google Sheet**. Il Mac copia l'archivio anche su **iCloud Drive**, così la famiglia trova i documenti nell'app **File** dell'iPhone. Un piccolo **sito web** permette in più di cercare con filtri e correggere i metadati.
 
 ```
 ScanSnap iX2500 ──ScanSnap Cloud (Wi-Fi, senza PC)──▶ Drive: Archivio Documenti/00_Inbox
@@ -14,7 +14,11 @@ ScanSnap iX2500 ──ScanSnap Cloud (Wi-Fi, senza PC)──▶ Drive: Archivio 
                                                               │
                                     Web app Apps Script (mobile-first, login Google)
                                     ricerca / filtri / anteprima / download / correzione metadati
+                                                              │
+                     Mac (ogni 15 min) ──▶ iCloud Drive/Archivio Documenti ──▶ app File su iPhone della famiglia
 ```
+
+**Dove stanno i file**: l'originale è su Google Drive (lì lavora lo scanner e la classificazione). iCloud Drive è una copia specchio aggiornata dal Mac. Il sito non conserva nulla: legge l'indice e mostra i file di Drive.
 
 **Perché così**: non c'è nessun server da pagare o mantenere. Google Drive e il foglio indice sono la copia che sopravvive a tutto: anche se il sito o la chiave API smettessero di funzionare, i file restano su Drive con nome parlante, e il foglio (più l'export Excel settimanale) contiene tutto l'archivio.
 
@@ -96,9 +100,23 @@ Nell'app **ScanSnap Home** (Mac) o nell'app ScanSnap sul telefono:
 
 Importante: **un documento per scansione** (un job = un file). Se metti nell'ADF più documenti diversi in un colpo solo, verranno classificati come un unico documento. Se vuoi scansionare in blocco, attiva in ScanSnap Home la separazione con pagina bianca o con codice di separazione.
 
+### 8. Copia su iCloud Drive per l'app File (famiglia Apple)
+1. Installa **Google Drive per desktop** sul Mac (https://www.google.com/drive/download/) e accedi con l'account Google di Andrea. Nel Finder compare `Google Drive/Il mio Drive/Archivio Documenti`.
+2. Nel Finder, tasto destro sulla cartella `Archivio Documenti` → **Disponibile offline** (così i file sono davvero sul disco e non solo segnaposto).
+3. Attiva la sincronizzazione automatica ogni 15 minuti:
+```bash
+bash sync/install.sh
+```
+   Il primo passaggio parte subito; poi ogni 15 minuti copia `Archivio` e l'ultimo indice Excel in `iCloud Drive/Archivio Documenti`. Log in `~/Library/Logs/archivio-sync.log`. Per disattivare: `bash sync/install.sh --uninstall`.
+4. Sul Mac o sull'iPhone, app File → iCloud Drive → `Archivio Documenti` → **Condividi** → *Collabora* → aggiungi Serena e i bambini (solo visualizzazione va benissimo). Da quel momento la cartella compare nel loro iCloud Drive.
+
+Sul telefono: app File → iCloud Drive → Archivio Documenti, oppure Spotlight scrivendo una parola del nome (es. "Enel", "referto", "Andrea"). Il file `Indice.xlsx` si apre con Numbers.
+
+Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato o la cartella è vuota non fa nulla; se la sorgente ha meno della metà dei file della copia si ferma e scrive nel log invece di cancellare.
+
 ## Uso quotidiano
 1. Arriva una lettera → la metti nello scanner → Scan.
-2. Entro 5 minuti il file è in `Archivio`, rinominato, con la riga nel foglio e visibile nel sito.
+2. Entro 5 minuti il file è in `Archivio`, rinominato, con la riga nel foglio e visibile nel sito; entro altri 15 minuti (Mac acceso) compare anche nell'app File.
 3. Se la classificazione è incerta (confidenza bassa o data mancante) il documento è segnato **Da verificare**: nel sito appare il banner giallo, apri la scheda, premi *Modifica*, correggi e salva. Il file viene rinominato e lo stato diventa *Verificato*.
 4. Dal telefono puoi anche fotografare un documento e caricarlo dal sito (bottone *Carica*): entra nella stessa coda dello scanner.
 
@@ -124,5 +142,7 @@ Importante: **un documento per scansione** (un job = un file). Se metti nell'ADF
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
 | `WebApp.gs` | `doGet()`, dati per il sito, correzione metadati, upload in Inbox |
 | `index.html`, `style.html`, `app.html` | Il sito (HTML, CSS, JavaScript), senza dipendenze esterne |
+| `../sync/sync-icloud.sh`, `install.sh` | Copia Google Drive → iCloud Drive dal Mac, con avvio automatico launchd |
+| `../test/run.js` | 32 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
