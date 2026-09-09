@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "archivio-di-casa",
+  "main": "src/index.js",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ARCHIVIO_API_URL": "https://script.google.com/macros/s/AKfycbxIby3uNqxKHSYLBYNtxlZkaseVPXZKDJ-aRbg6fzOA_iAkVV1GHS8SCfufBtmHIOcUwA/exec"
+  },
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "d78c60a9ebab4520974356e94c5d2750" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MCP_OBJECT", "class_name": "ArchivioMCP" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ArchivioMCP"] }],
+  "observability": { "enabled": true }
+}

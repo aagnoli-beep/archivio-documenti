@@ -1,0 +1,23 @@
+{
+  "name": "archivio-di-casa-remote-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Connettore MCP remoto (Cloudflare Worker) per l'archivio documentale di famiglia",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.0.5",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.22.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
