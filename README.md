@@ -12,8 +12,8 @@ ScanSnap iX2500 ──ScanSnap Cloud (Wi-Fi, senza PC)──▶ Drive: Archivio 
  Claude API (PDF → JSON metadati)          rinomina + sposta in "Archivio"        riga nel Google Sheet "Indice"
                                            + descrizione/proprietà Drive          (+ export .xlsx ogni notte in "Backup")
                                                               │
-                                    Web app Apps Script (mobile-first, login Google)
-                                    ricerca / filtri / anteprima / download / correzione metadati
+                     Sito su GitHub Pages (docs/) con "Accedi con Google" ──▶ backend JSON Apps Script
+                     ricerca / filtri / anteprima / download / correzioni / "Chiedi all'archivio" (Claude)
                                                               │
                      Mac (ogni 15 min) ──▶ iCloud Drive/Archivio Documenti ──▶ app File su iPhone della famiglia
 ```
@@ -79,21 +79,24 @@ Nell'editor Apps Script:
 
 Facoltativo: nel foglio **Config** puoi cambiare email per gli avvisi, soglia di confidenza, modello e nomi dei familiari; nel foglio **Categorie** puoi aggiungere o rinominare categorie e sottocategorie. Nessuna modifica al codice.
 
-### 5. Pubblica il sito
-Nell'editor Apps Script: **Distribuisci** → *Nuova distribuzione* → tipo **App web**:
-- *Esegui come*: **Utente che accede all'app web**
-- *Chi può accedere*: **Chiunque con un account Google**
+### 5. Pubblica il sito (GitHub Pages + Accedi con Google)
+Il sito è una pagina statica in `docs/`, pubblicata da GitHub Pages; parla con Apps Script tramite un deployment "esegui come me, accesso a chiunque", e l'accesso è protetto dal token di "Accedi con Google" verificato dal backend contro la lista `ALLOWED_EMAILS`.
 
-Copia l'URL. Sul telefono aprilo in Chrome/Safari e usa *Aggiungi alla schermata Home*: diventa un'icona come un'app.
+1. In Apps Script: **Distribuisci → Nuova distribuzione → App web**, *Esegui come: Me*, *Chi può accedere: Chiunque*. Copia l'URL `/exec`.
+2. In Google Cloud Console (stesso account): **Google Auth Platform** → Branding (nome app, email) → Pubblico *Esterno* + utenti di prova (le email della famiglia) → **Client** → *Applicazione web* con origine JavaScript autorizzata `https://<utente>.github.io`. Copia il Client ID.
+3. Nel foglio **Config**: `GOOGLE_CLIENT_ID`, `ALLOWED_EMAILS` (chi entra), `EDITOR_EMAILS` (chi può correggere e caricare), `SITE_URL`.
+4. In `docs/config.js` inserisci `CLIENT_ID` e `API_URL`, poi push su GitHub e attiva Pages dalla cartella `docs/` (branch main).
 
-Quando in futuro modifichi il codice: `npx clasp push`, poi **Distribuisci → Gestisci distribuzioni → modifica → Nuova versione**.
+Sul telefono: apri il sito, accedi con Google, poi "Aggiungi alla schermata Home".
+
+Nota: le app web Apps Script aperte *direttamente* nel browser possono mostrare "Impossibile aprire il file" quando nel browser ci sono più account Google; il sito su GitHub Pages non ha questo problema perché non passa dal login interno di Google.
 
 ### 6. Condividi con la famiglia
 Su Drive, condividi la cartella **Archivio Documenti** (tutta) e il foglio **Archivio Documenti - Indice**:
 - Serena: **Editor** (può correggere i metadati e caricare dal sito)
 - bambini: **Visualizzatore** (cercano, vedono, scaricano)
 
-Ognuno apre l'URL del sito con il proprio account Google e alla prima volta autorizza lo script (stesso avviso "app non verificata" → Avanzate → continua). Chi non ha la cartella condivisa non vede nulla, anche se conosce l'URL.
+Ognuno apre il sito e accede con il proprio account Google: entrano solo le email elencate in `ALLOWED_EMAILS` nel foglio Config.
 
 ### 7. Configura lo scanner
 Nell'app **ScanSnap Home** (Mac) o nell'app ScanSnap sul telefono:
@@ -121,8 +124,9 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 ## Uso quotidiano
 1. Arriva una lettera → la metti nello scanner → Scan.
 2. Entro 5 minuti il file è in `Archivio`, rinominato, con la riga nel foglio e visibile nel sito; entro altri 15 minuti (Mac acceso) compare anche nell'app File.
-3. Se la classificazione è incerta (confidenza bassa o data mancante) il documento è segnato **Da verificare**: nel sito appare il banner giallo, apri la scheda, premi *Modifica*, correggi e salva. Il file viene rinominato e lo stato diventa *Verificato*.
-4. Dal telefono puoi anche fotografare un documento e caricarlo dal sito (bottone *Carica*): entra nella stessa coda dello scanner.
+3. Se la classificazione è incerta (confidenza bassa) il documento è segnato **Da verificare**: nel sito appare il banner giallo, apri la scheda, premi *Modifica*, correggi e salva. Il file viene rinominato e lo stato diventa *Verificato*.
+4. Dal telefono puoi anche fotografare un documento e caricarlo dal sito (bottone *+*): entra nella stessa coda dello scanner.
+5. Nella scheda **Chiedi** fai domande in italiano ("quando scade l'assicurazione?"): l'assistente risponde usando le schede dei documenti e ti mostra quelli citati.
 
 ## Manutenzione e problemi
 - **Foglio `Log`**: ogni classificazione, avviso ed errore, con data e nome file.
@@ -144,8 +148,9 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 | `Index.gs` | Foglio Indice e Log, export Excel |
 | `Alerts.gs` | Email di avviso (una al giorno per tipo) |
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
-| `WebApp.gs` | `doGet()`, dati per il sito, correzione metadati, upload in Inbox |
-| `index.html`, `style.html`, `app.html` | Il sito (HTML, CSS, JavaScript), senza dipendenze esterne |
+| `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
+| `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
+| `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.sh`, `install.sh` | Copia Google Drive → iCloud Drive dal Mac, con avvio automatico launchd |
 | `../test/run.js` | 32 scenari della pipeline in un Apps Script simulato: `npm test` |
 
