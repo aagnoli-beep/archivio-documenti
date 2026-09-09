@@ -35,7 +35,9 @@ function sendDailyDigest() {
   }
 
   var mail = buildDigestEmail_(docs, since, now, cfg);
-  MailApp.sendEmail({ to: recipients.join(','), subject: mail.subject, htmlBody: mail.html, body: mail.text, name: 'Archivio di casa' });
+  var msg = { to: recipients.join(','), subject: mail.subject, htmlBody: mail.html, body: mail.text, name: cfg.digestSenderName };
+  if (cfg.digestReplyTo) msg.replyTo = cfg.digestReplyTo;
+  MailApp.sendEmail(msg);
   props.setProperty('DIGEST_LAST_AT', now.toISOString());
   logEvent('INFO', '', 'Rendiconto inviato a ' + recipients.join(', ') + ': ' + docs.length + ' documenti (' + mail.mode + ')');
 }

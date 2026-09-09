@@ -76,7 +76,9 @@ var DEFAULT_CONFIG = [
   ['EDITOR_EMAILS', '', 'Chi può correggere i metadati e caricare documenti: email separate da virgola (vuoto = tutti gli ALLOWED)'],
   ['SITE_URL', '', 'Indirizzo del sito (GitHub Pages), usato per il redirect e nelle email'],
   ['DIGEST_EMAILS', '', 'Destinatari del rendiconto giornaliero dei documenti scansionati (email separate da virgola; vuoto = disattivato)'],
-  ['DIGEST_HOUR', '20', 'Ora del rendiconto giornaliero (0-23)']
+  ['DIGEST_HOUR', '20', 'Ora del rendiconto giornaliero (0-23)'],
+  ['DIGEST_REPLY_TO', '', 'Indirizzo a cui vanno le risposte al rendiconto (il mittente resta l\'account Google dello script)'],
+  ['DIGEST_SENDER_NAME', 'Archivio di casa', 'Nome del mittente mostrato nel rendiconto']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -168,6 +170,8 @@ function getConfig() {
     siteUrl: kv.SITE_URL || '',
     digestEmails: splitEmails_(kv.DIGEST_EMAILS),
     digestHour: Math.min(23, Math.max(0, parseInt(kv.DIGEST_HOUR, 10) || 20)),
+    digestReplyTo: String(kv.DIGEST_REPLY_TO || '').trim(),
+    digestSenderName: String(kv.DIGEST_SENDER_NAME || 'Archivio di casa').trim(),
     categories: categories,
     categoryNames: Object.keys(categories)
   };
