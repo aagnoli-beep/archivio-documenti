@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
       case 'index': return reply({ ok: true, user, data: { docs, categories: { Utenze: ['Luce'], Salute: ['Visita specialistica'] }, family: ['Andrea Agnoli', 'Serena'] } });
       case 'doc': return reply({ ok: true, user, data: docs.find((d) => d.id === b.id) || null });
       case 'ask': return reply({ ok: true, user, data: { answer: 'La bolletta scade il 2026-09-20.', docs: [docs[0]], searched: 2, total: 2 } });
-      case 'file': return reply({ ok: true, user, data: { name: 'Bolletta.pdf', mime: 'application/pdf', size: 4, base64: Buffer.from('%PDF').toString('base64') } });
+      case 'file': { const full = Buffer.from('%PDF'); const off = b.offset || 0; const part = full.subarray(off, off + 2); return reply({ ok: true, user, data: { name: 'Bolletta.pdf', mime: 'application/pdf', size: full.length, offset: off, length: part.length, more: off + part.length < full.length, base64: part.toString('base64') } }); }
       case 'update': { const d = { ...docs[1], ...b.fields, stato: 'Verificato' }; return reply({ ok: true, user, data: d }); }
       default: return reply({ ok: false, code: 'bad_request', error: 'azione sconosciuta' });
     }

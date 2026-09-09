@@ -16,6 +16,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { downloadFile } from '../mcp/tools.mjs';
 const execFileP = promisify(execFile);
 
 const HOME = os.homedir();
@@ -100,8 +102,8 @@ async function main() {
     const dest = path.join(archiveDir, name);
     try { await fs.access(dest); written.add(name); continue; } catch {}
     try {
-      const f = await api('file', { id: d.id });
-      await fs.writeFile(dest + '.part', Buffer.from(f.base64, 'base64'));
+      const f = await downloadFile(api, d.id);
+      await fs.writeFile(dest + '.part', f.bytes);
       await fs.rename(dest + '.part', dest);
       written.add(name);
       added++;

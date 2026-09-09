@@ -33,6 +33,25 @@ export function shortLine(d) {
   return `- [${d.id}] ${fmtDate(d.dataDocumento)} · ${d.titolo || d.nomeFile} · ${d.categoria}${d.sottocategoria ? ' › ' + d.sottocategoria : ''} · ${d.mittente || '?'} → ${d.soggetti || d.destinatario || '?'}${d.importo ? ' · ' + d.importo : ''}${d.stato && d.stato !== 'Auto' ? ' · ' + d.stato : ''}`;
 }
 
+/** Scarica un documento dal backend a pezzi (il backend limita ogni risposta a ~6 MB). */
+export async function downloadFile(api, id) {
+  const first = await api('file', { id });
+  const chunks = [Uint8Array.from(atob(first.base64), (c) => c.charCodeAt(0))];
+  let offset = first.offset + first.length;
+  let more = !!first.more;
+  while (more) {
+    const part = await api('file', { id, offset });
+    chunks.push(Uint8Array.from(atob(part.base64), (c) => c.charCodeAt(0)));
+    offset = part.offset + part.length;
+    more = !!part.more;
+  }
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const bytes = new Uint8Array(total);
+  let pos = 0;
+  for (const c of chunks) { bytes.set(c, pos); pos += c.length; }
+  return { name: first.name, mime: first.mime, size: first.size, bytes };
+}
+
 export function searchDocs(docs, { query = '', categoria, persona, anno, stato, limit = 20 }) {
   const terms = norm(query).split(/\s+/).filter(Boolean);
   const out = docs.filter((d) => {
@@ -125,9 +144,8 @@ export function registerTools(server, api, opts = {}) {
       'Scarica il PDF (o l\'immagine) di un documento sul computer e restituisce il percorso del file, così Claude può leggerlo o aprirlo.',
       { id: z.string().describe('ID del documento'), cartella: z.string().optional().describe('Cartella di destinazione (default: ~/Downloads/Archivio)') },
       async ({ id, cartella }) => {
-        const f = await api('file', { id });
-        const bytes = Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0));
-        const dest = await opts.saveFile(String(f.name || id + '.pdf').replace(/[\/\\:*?"<>|]/g, '_'), bytes, cartella);
+        const f = await downloadFile(api, id);
+        const dest = await opts.saveFile(String(f.name || id + '.pdf').replace(/[\/\\:*?"<>|]/g, '_'), f.bytes, cartella);
         return text(`Salvato: ${dest} (${Math.round((f.size || 0) / 1024)} KB, ${f.mime})`);
       });
   } else {

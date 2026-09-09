@@ -10,7 +10,8 @@
  */
 
 var TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token=';
-var FILE_MAX_BYTES = 25 * 1024 * 1024;
+var FILE_MAX_BYTES = 60 * 1024 * 1024;
+var FILE_CHUNK_MAX = 6 * 1024 * 1024;   // per risposta: base64 di 6 MB resta sotto i limiti di Apps Script
 
 function doGet(e) { return handleRequest_(e, 'GET'); }
 function doPost(e) { return handleRequest_(e, 'POST'); }
@@ -108,7 +109,7 @@ function dispatch_(action, user, body, cfg) {
     case 'doc':
       return getIndexRow(String(body.id || ''));
     case 'file':
-      return getFilePayload_(String(body.id || ''));
+      return getFilePayload_(String(body.id || ''), parseInt(body.offset, 10) || 0, parseInt(body.length, 10) || 0);
     case 'update':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per modificare');
       return updateDocument(String(body.id || ''), body.fields || {}, user.email);
@@ -124,14 +125,24 @@ function dispatch_(action, user, body, cfg) {
   }
 }
 
-/** Contenuto di un documento dell'archivio (solo file presenti nell'Indice). */
-function getFilePayload_(fileId) {
+/**
+ * Contenuto di un documento dell'archivio (solo file presenti nell'Indice), anche a pezzi:
+ * senza offset/length restituisce al massimo FILE_CHUNK_MAX byte dall'inizio; il client continua con offset
+ * finché `more` è false. Risposta: { name, mime, size, offset, length, more, base64 }.
+ */
+function getFilePayload_(fileId, offset, length) {
   var meta = getIndexRow(fileId);
   if (!meta) throw new ApiError('not_found', 'Documento non trovato');
   var file = DriveApp.getFileById(fileId);
-  if (file.getSize() > FILE_MAX_BYTES) throw new ApiError('too_large', 'File troppo grande per l\'anteprima: aprilo da Drive');
+  var size = file.getSize();
+  if (size > FILE_MAX_BYTES) throw new ApiError('too_large', 'File troppo grande per il download dal sito: aprilo da Drive');
+  offset = Math.max(0, offset || 0);
+  length = Math.min(FILE_CHUNK_MAX, length > 0 ? length : FILE_CHUNK_MAX);
   var blob = file.getBlob();
-  return { name: file.getName(), mime: blob.getContentType() || 'application/pdf', size: file.getSize(), base64: Utilities.base64Encode(blob.getBytes()) };
+  var bytes = blob.getBytes();
+  var end = Math.min(size, offset + length);
+  var part = (offset === 0 && end === size) ? bytes : bytes.slice(offset, end);
+  return { name: file.getName(), mime: blob.getContentType() || 'application/pdf', size: size, offset: offset, length: end - offset, more: end < size, base64: Utilities.base64Encode(part) };
 }
 
 var EDITABLE_FIELDS = ['categoria', 'sottocategoria', 'sottoSottocategoria', 'tipoDocumento', 'mittente',
