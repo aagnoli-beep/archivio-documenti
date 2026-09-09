@@ -6,11 +6,16 @@
  * (icloudDir è facoltativo: default iCloud Drive/Archivio Documenti)
  *
  * Regole: aggiunge i documenti nuovi, rinomina/rimuove quelli cambiati o spariti dall'Indice (solo dentro "Archivio"),
- * aggiorna Indice.xlsx. Non tocca mai Google Drive. Log in ~/Library/Logs/archivio-sync.log
+ * aggiorna Indice.xlsx. In più svuota "Da archiviare": ogni file messo lì viene mandato alla Inbox di Drive
+ * (foto HEIC convertite in JPEG) e poi tolto; ricompare in "Archivio" dopo la classificazione.
+ * Non tocca mai Google Drive. Log in ~/Library/Logs/archivio-sync.log
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const execFileP = promisify(execFile);
 
 const HOME = os.homedir();
 const LOG = path.join(HOME, 'Library', 'Logs', 'archivio-sync.log');
@@ -20,6 +25,11 @@ async function log(msg) {
   const line = `${new Date().toISOString().replace('T', ' ').slice(0, 19)} ${msg}\n`;
   await fs.appendFile(LOG, line);
   process.stdout.write(line);
+}
+
+function mimeFor(name) {
+  const ext = (name.match(/\.([A-Za-z0-9]+)$/) || [])[1]?.toLowerCase();
+  return { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif' }[ext] || 'application/octet-stream';
 }
 
 async function main() {
@@ -36,6 +46,35 @@ async function main() {
     if (!json.ok) throw new Error(json.error || 'errore backend');
     return json.data;
   };
+
+  // --- "Da archiviare": invia alla Inbox di Drive e rimuove dal Mac
+  const dropDir = path.join(dst, 'Da archiviare');
+  await fs.mkdir(dropDir, { recursive: true });
+  let sent = 0, sendFailed = 0;
+  for (const name of (await fs.readdir(dropDir)).filter((n) => !n.startsWith('.') && !n.endsWith('.part'))) {
+    const full = path.join(dropDir, name);
+    let st;
+    try { st = await fs.stat(full); } catch { continue; }
+    if (!st.isFile() || st.size === 0 || Date.now() - st.mtimeMs < 60 * 1000) continue;   // ancora in scrittura / sincronizzazione
+    if (st.size > 25 * 1024 * 1024) { await log(`AVVISO: "${name}" supera 25 MB, non inviato (riducilo o caricalo su Drive)`); continue; }
+    try {
+      let uploadPath = full, uploadName = name, mime = mimeFor(name);
+      if (/\.hei[cf]$/i.test(name)) {
+        uploadPath = path.join(os.tmpdir(), name.replace(/\.hei[cf]$/i, '') + '-' + Date.now() + '.jpg');
+        await execFileP('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '90', full, '--out', uploadPath]);
+        uploadName = name.replace(/\.hei[cf]$/i, '.jpg'); mime = 'image/jpeg';
+      }
+      const data = (await fs.readFile(uploadPath)).toString('base64');
+      await api('upload', { data, name: uploadName, mime });
+      await fs.rm(full, { force: true });
+      if (uploadPath !== full) await fs.rm(uploadPath, { force: true });
+      sent++;
+      await log(`INVIATO alla Inbox: ${uploadName}`);
+    } catch (e) {
+      sendFailed++;
+      await log(`AVVISO: "${name}" non inviato (${e.message}); riprovo tra 15 minuti`);
+    }
+  }
 
   const index = await api('index');
   const wanted = new Map();
@@ -74,7 +113,7 @@ async function main() {
   } catch (e) { await log('AVVISO: Indice.xlsx non aggiornato: ' + e.message); }
 
   const now = (await fs.readdir(archiveDir)).filter((n) => !n.startsWith('.')).length;
-  await log(`OK: ${now} documenti in iCloud (indice ${wanted.size}; +${added} -${removed}${failed ? ' non scaricati ' + failed : ''})`);
+  await log(`OK: ${now} documenti in iCloud (indice ${wanted.size}; +${added} -${removed}${failed ? ' non scaricati ' + failed : ''}${sent ? '; inviati da "Da archiviare": ' + sent : ''}${sendFailed ? '; non inviati: ' + sendFailed : ''})`);
   return 0;
 }
 

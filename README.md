@@ -153,6 +153,12 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 ### 11. Rendiconto giornaliero via email
 Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIGEST_EMAILS` (foglio Config) un'email con i documenti scansionati dall'ultimo invio: fino a 10 con due righe discorsive scritte da Claude e i link, da 11 a 30 una tabella, oltre 30 solo il conteggio. Nessuna email se non è arrivato nulla. I documenti "da verificare" sono evidenziati. Per provarla subito: esegui `sendDailyDigest` dall'editor Apps Script.
 
+### 12. Altri modi per inserire documenti (oltre allo scanner)
+- **Email**: inoltra qualsiasi email con PDF o foto a `andrea.agnoli.1984+archivio@gmail.com` (Config `MAIL_INTAKE_ADDRESS`); dal telefono, Foto → Condividi → Mail a quel contatto. Entrano solo i mittenti di `MAIL_SENDERS`. Se l'email non ha allegati, diventa lei stessa un PDF. Ogni 5 minuti (`processMailIntake`), messaggi etichettati `Archivio/Elaborate` o `Archivio/Ignorate`, mai cancellati. Richiede lo scope Gmail (autorizzazione una tantum dall'editor).
+- **Cartella iCloud "Da archiviare"** (dentro Archivio Documenti): file e foto messi lì (anche da iPhone con "Salva su File") vengono inviati dal Mac alla Inbox di Drive entro 15 minuti, tolti dalla cartella e, una volta classificati, ricompaiono in "Archivio". Le foto HEIC vengono convertite in JPEG dal Mac (`sips`); se un HEIC arriva a Drive per altre vie, lo converte lo script usando l'anteprima di Drive.
+- **Bottone + del sito**: carica PDF o foto direttamente nella Inbox.
+- **WhatsApp**: non attivo. Servirebbe l'API ufficiale Meta (account Meta Business, app sviluppatore, numero di telefono dedicato non già usato su WhatsApp) e un webhook sul Worker: fattibile in un secondo momento.
+
 ## Uso quotidiano
 1. Arriva una lettera → la metti nello scanner → Scan.
 2. Entro 5 minuti il file è in `Archivio`, rinominato, con la riga nel foglio e visibile nel sito; entro altri 15 minuti (Mac acceso) compare anche nell'app File.
@@ -180,6 +186,7 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 | `Index.gs` | Foglio Indice e Log, export Excel |
 | `Alerts.gs` | Email di avviso (una al giorno per tipo) |
 | `Digest.gs` | Rendiconto giornaliero via email dei documenti scansionati |
+| `MailIntake.gs` | Ingresso documenti via email (allegati o email → PDF) |
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |

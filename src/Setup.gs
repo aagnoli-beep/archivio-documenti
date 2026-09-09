@@ -78,11 +78,12 @@ function setupProject() {
 /** (Re)installa i trigger: processInbox ogni 5 minuti, export Excel ogni notte alle 3. */
 function installTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (['processInbox', 'exportIndexXlsx', 'sendDailyDigest'].indexOf(t.getHandlerFunction()) >= 0) {
+    if (['processInbox', 'exportIndexXlsx', 'sendDailyDigest', 'processMailIntake'].indexOf(t.getHandlerFunction()) >= 0) {
       ScriptApp.deleteTrigger(t);
     }
   });
   ScriptApp.newTrigger('processInbox').timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger('processMailIntake').timeBased().everyMinutes(5).create();
   ScriptApp.newTrigger('sendDailyDigest').timeBased().everyDays(1).atHour(getConfig().digestHour).create();
   ScriptApp.newTrigger('exportIndexXlsx').timeBased().everyDays(1).atHour(3).create();
 }

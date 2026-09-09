@@ -19,7 +19,7 @@ const nodes = {};   // id -> node
 class Blob {
   constructor(bytes, mime, name) { this.bytes = bytes; this.mime = mime; this.name = name; }
   getBytes() { return this.bytes; } getName() { return this.name; } setName(n) { this.name = n; return this; }
-  getContentType() { return this.mime; }
+  getContentType() { return this.mime; } setContentType(m) { this.mime = m; return this; } copyBlob() { return new Blob(this.bytes.slice(), this.mime, this.name); } getSize() { return this.bytes.length; }
 }
 class Node {
   constructor(kind, name, parent) {
@@ -44,6 +44,7 @@ class Node {
   getSize() { return this.blob ? this.blob.bytes.length : 0; } getBlob() { return this.blob; }
   getLastUpdated() { return this.updated; } getDateCreated() { return this.created; }
   getDescription() { return this.description; }
+  getAs(mime) { return new Blob(Array.from(Buffer.from('%PDF-from-' + this.name)), mime, this.name + '.pdf'); }
   moveTo(folder) { this.parent.children = this.parent.children.filter(c => c !== this); this.parent = folder; folder.children.push(this); return this; }
 }
 function iter(arr) { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; }
@@ -56,7 +57,8 @@ G.DriveApp = {
 G.Drive = { Files: {
   update: (res, id) => { const n = nodes[id]; if (!n) throw new Error('404'); if (res.description !== undefined) n.description = res.description; if (res.appProperties) n.appProperties = res.appProperties; return { id }; },
   copy: (res, id) => { const src = nodes[id]; const doc = new Node('file', res.name, root); doc.blob = new Blob([], res.mimeType, res.name); G.__docs[doc.id] = 'TESTO OCR DI ' + src.name + ': ' + 'Referto visita cardiologica. Paziente Andrea Agnoli. Dott. Mario Rossi. 12/03/2026.'; return { id: doc.id }; },
-  get: (id, opts) => { const n = nodes[id]; if (!n) throw new Error('404'); return { appProperties: n.appProperties, capabilities: { canEdit: G.__canEdit !== false } }; },
+  get: (id, opts) => { const n = nodes[id]; if (!n) throw new Error('404'); return { appProperties: n.appProperties, capabilities: { canEdit: G.__canEdit !== false }, thumbnailLink: G.__noThumb ? undefined : 'https://lh3.googleusercontent.com/thumb/' + id + '=s220' }; },
+  create: (res, blob) => { const doc = new Node('file', res.name, root); doc.blob = new Blob(blob ? blob.getBytes() : [], res.mimeType, res.name); doc.isGoogleDoc = res.mimeType === 'application/vnd.google-apps.document'; G.__docs[doc.id] = blob ? Buffer.from(blob.getBytes()).toString() : ''; return { id: doc.id }; },
   remove: (id) => { const n = nodes[id]; if (n) { n.trashed = true; n.parent.children = n.parent.children.filter(c => c !== n); delete nodes[id]; } }
 } };
 G.DocumentApp = { openById: (id) => ({ getBody: () => ({ getText: () => G.__docs[id] || '' }) }) };
@@ -122,6 +124,22 @@ G.ScriptApp = {
   getOAuthToken: () => 'tok'
 };
 G.MailApp = { sendEmail: (m) => { G.__mail.push(m); } };
+G.__labels = {}; G.__threads = [];
+class GLabel { constructor(n) { this.name = n; } getName() { return this.name; } }
+class GMessage { constructor(t, o) { this.t = t; this.o = o; this.id = 'm' + (idSeq++); }
+  getId() { return this.id; } getFrom() { return this.o.from; } getTo() { return this.o.to || ''; } getSubject() { return this.o.subject || ''; }
+  getDate() { return this.o.date || new Date(); } getBody() { return this.o.body || ''; } getPlainBody() { return this.o.plain || ''; }
+  getAttachments() { return (this.o.attachments || []).map((a) => new Blob(a.bytes || Array.from(Buffer.from('x'.repeat(a.size || 10))), a.mime, a.name)); } }
+class GThread { constructor(o) { this.id = 't' + (idSeq++); this.labels = []; this.msgs = (o.messages || [o]).map((m) => new GMessage(this, m)); this.deliveredTo = o.deliveredTo || ''; }
+  getId() { return this.id; } getMessages() { return this.msgs; } getFirstMessageSubject() { return this.msgs[0].getSubject(); }
+  addLabel(l) { if (!this.labels.includes(l.name)) this.labels.push(l.name); return this; } }
+G.__mkthread = (o) => { const t = new GThread(o); G.__threads.push(t); return t; };
+G.GmailApp = {
+  getUserLabelByName: (n) => G.__labels[n] || null,
+  createLabel: (n) => { G.__labels[n] = new GLabel(n); return G.__labels[n]; },
+  search: (q, start, max) => { const addr = (q.match(/deliveredto:(\S+)/) || [])[1]; const excluded = [...q.matchAll(/-label:(\S+)/g)].map((m) => m[1]);
+    return G.__threads.filter((t) => t.deliveredTo === addr && !t.labels.some((l) => excluded.includes(l))).slice(start || 0, (start || 0) + (max || 50)); }
+};
 G.__cache = {};
 G.CacheService = { getScriptCache: () => ({ get: (k) => (k in G.__cache ? G.__cache[k] : null), put: (k, v) => { G.__cache[k] = v; }, remove: (k) => { delete G.__cache[k]; } }) };
 G.ContentService = { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ _text: t, setMimeType() { return this; }, getContent: () => t }) };

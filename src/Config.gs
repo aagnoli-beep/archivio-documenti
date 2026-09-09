@@ -78,7 +78,9 @@ var DEFAULT_CONFIG = [
   ['DIGEST_EMAILS', '', 'Destinatari del rendiconto giornaliero dei documenti scansionati (email separate da virgola; vuoto = disattivato)'],
   ['DIGEST_HOUR', '20', 'Ora del rendiconto giornaliero (0-23)'],
   ['DIGEST_REPLY_TO', '', 'Indirizzo a cui vanno le risposte al rendiconto (il mittente resta l\'account Google dello script)'],
-  ['DIGEST_SENDER_NAME', 'Archivio di casa', 'Nome del mittente mostrato nel rendiconto']
+  ['DIGEST_SENDER_NAME', 'Archivio di casa', 'Nome del mittente mostrato nel rendiconto'],
+  ['MAIL_INTAKE_ADDRESS', '', 'Indirizzo a cui inoltrare email e foto da archiviare (vuoto = <account>+archivio@gmail.com)'],
+  ['MAIL_SENDERS', '', 'Mittenti ammessi per l\'ingresso via email (vuoto = ALLOWED_EMAILS + DIGEST_EMAILS + proprietario)']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -172,6 +174,13 @@ function getConfig() {
     digestHour: Math.min(23, Math.max(0, parseInt(kv.DIGEST_HOUR, 10) || 20)),
     digestReplyTo: String(kv.DIGEST_REPLY_TO || '').trim(),
     digestSenderName: String(kv.DIGEST_SENDER_NAME || 'Archivio di casa').trim(),
+    mailIntakeAddress: (kv.MAIL_INTAKE_ADDRESS || defaultIntakeAddress_()).toLowerCase(),
+    mailSenders: (function () {
+      var explicit = splitEmails_(kv.MAIL_SENDERS);
+      if (explicit.length) return explicit;
+      var all = splitEmails_(kv.ALLOWED_EMAILS).concat(splitEmails_(kv.DIGEST_EMAILS), [String(Session.getEffectiveUser().getEmail() || '').toLowerCase()]);
+      return all.filter(function (e, i) { return e && all.indexOf(e) === i; });
+    })(),
     categories: categories,
     categoryNames: Object.keys(categories)
   };
@@ -188,4 +197,11 @@ function ensureConfigDefaults_() {
   var existing = {};
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) { if (r[0]) existing[String(r[0]).trim()] = true; });
   DEFAULT_CONFIG.forEach(function (row) { if (!existing[row[0]]) sh.appendRow(row); });
+}
+
+/** <account>+archivio@dominio: alias Gmail che non richiede configurazione. */
+function defaultIntakeAddress_() {
+  var owner = String(Session.getEffectiveUser().getEmail() || '');
+  var at = owner.indexOf('@');
+  return at > 0 ? owner.substring(0, at) + '+archivio' + owner.substring(at) : '';
 }

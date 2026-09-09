@@ -58,6 +58,7 @@ function processInbox() {
 }
 
 function processFile_(file, cfg, archive) {
+  if (isHeic_(file.getMimeType())) file = convertHeicToJpeg_(file, DriveApp.getFolderById(getProp_(PROP.INBOX_FOLDER_ID, true)));
   var raw = classifyDocument(file, cfg);
   var meta = normalizeMeta_(raw, file, cfg);
   var ext = fileExtension_(file);

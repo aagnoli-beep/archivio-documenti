@@ -16,9 +16,9 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 17); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
-t('tre trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'sendDailyDigest', 'exportIndexXlsx']); });
-t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 3); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 19); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('quattro trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'processMailIntake', 'sendDailyDigest', 'exportIndexXlsx']); });
+t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 4); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
 
 console.log('2. processInbox - caso normale');
@@ -149,6 +149,43 @@ delete G.__props.DIGEST_LAST_AT; G.__mail.length = 0;
 ss.getSheetByName('Indice').rows.splice(2 + 8);  // tiene i primi documenti
 sendDailyDigest();
 t('se Claude non risponde -> email comunque, con i riassunti', () => { assert.strictEqual(G.__mail.length, 1); assert.ok(G.__mail[0].htmlBody.indexOf('Archivio di casa') > 0); });
+G.__httpHandler = () => claudeOk(bolletta);
+
+console.log('6c. ingresso via email e foto HEIC');
+ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='MAIL_SENDERS') r[1]='andrea@example.com, serena@example.com'; if (r[0]==='MAIL_INTAKE_ADDRESS') r[1]=''; });
+t('indirizzo di intake predefinito = account+archivio', () => { assert.strictEqual(getConfig().mailIntakeAddress, 'andrea+archivio@example.com'); });
+const inboxCount = () => { let n = 0; const it = inbox.getFiles(); while (it.hasNext()) { it.next(); n++; } return n; };
+const before = inboxCount();
+const th1 = G.__mkthread({ deliveredTo: 'andrea+archivio@example.com', from: 'Serena <serena@example.com>', subject: 'Fwd: Bolletta gas', date: new Date('2026-09-09T10:00:00'), attachments: [{ name: 'bolletta gas.pdf', mime: 'application/pdf', size: 5000 }, { name: 'logo.png', mime: 'image/png', size: 2000 }, { name: 'foto.jpg', mime: 'image/jpeg', size: 90000 }, { name: 'nota.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 1000 }] });
+const th2 = G.__mkthread({ deliveredTo: 'andrea+archivio@example.com', from: 'spam@altrove.com', subject: 'Offerta', attachments: [{ name: 'x.pdf', mime: 'application/pdf', size: 100 }] });
+const th3 = G.__mkthread({ deliveredTo: 'andrea+archivio@example.com', from: 'andrea@example.com', subject: 'Fattura idraulico', date: new Date('2026-09-08T09:00:00'), body: '<p>Gentile cliente, in allegato... totale 250 EUR</p>' });
+const th4 = G.__mkthread({ deliveredTo: 'altro@example.com', from: 'andrea@example.com', subject: 'non per l\'archivio', attachments: [{ name: 'y.pdf', mime: 'application/pdf', size: 100 }] });
+processMailIntake();
+t('allegati utili salvati in Inbox (PDF e foto, non logo né docx), nome con data e oggetto', () => {
+  assert.strictEqual(inboxCount(), before + 3);
+  const names = []; const it = inbox.getFiles(); while (it.hasNext()) names.push(it.next().getName());
+  assert.ok(names.includes('2026-09-09_email_Fwd-Bolletta-gas_bolletta-gas.pdf'), names.join(','));
+  assert.ok(names.includes('2026-09-09_email_Fwd-Bolletta-gas_foto.jpg'));
+  assert.ok(!names.some(n => /logo|nota/.test(n)));
+});
+t('email senza allegati -> PDF del messaggio, doc temporaneo eliminato', () => { const names = []; const it = inbox.getFiles(); while (it.hasNext()) names.push(it.next().getName()); assert.ok(names.includes('2026-09-08_email_Fattura-idraulico.pdf'), names.join(',')); assert.ok(!Object.values(nodes).some(n => n.name && n.name.indexOf('tmp-mail') === 0)); });
+t('etichette: Elaborate per le email valide, Ignorate per il mittente estraneo', () => { assert.deepStrictEqual(th1.labels, ['Archivio/Elaborate']); assert.deepStrictEqual(th3.labels, ['Archivio/Elaborate']); assert.deepStrictEqual(th2.labels, ['Archivio/Ignorate']); assert.deepStrictEqual(th4.labels, []); });
+const after = inboxCount(); processMailIntake();
+t('secondo giro: nulla di nuovo', () => { assert.strictEqual(inboxCount(), after); });
+// errori ripetuti -> dopo 5 tentativi Ignorate
+const thBad = G.__mkthread({ deliveredTo: 'andrea+archivio@example.com', from: 'andrea@example.com', subject: 'Rotta', attachments: [{ name: 'k.pdf', mime: 'application/pdf', size: 100 }] });
+const origCreate = inbox.createFile; inbox.createFile = () => { throw new Error('Drive giù'); };
+for (let i = 0; i < 5; i++) processMailIntake();
+inbox.createFile = origCreate;
+t('errore ripetuto -> dopo 5 tentativi Ignorate, senza bloccare le altre email', () => { assert.deepStrictEqual(thBad.labels, ['Archivio/Ignorate']); assert.strictEqual(G.__props['MAILTRY_' + thBad.getId()], undefined); });
+// HEIC nella Inbox -> JPEG e classificazione
+G.__httpHandler = (url) => url.indexOf('googleusercontent') >= 0 ? { code: 200, bytes: [255, 216, 255, 1, 2, 3, 4, 5, 6, 7], body: '' } : claudeOk(referto);
+const heic = G.__mkfile(inbox, 'IMG_0012.heic', new Array(500).fill(0), 'image/heic');
+G.__http.length = 0;
+// svuota la Inbox dalle email di test per isolare il caso
+{ const it = inbox.getFiles(); while (it.hasNext()) { const f = it.next(); if (f !== heic) f.setTrashed(true); } }
+processInbox();
+t('HEIC -> convertita in JPEG via anteprima Drive, originale nel cestino, classificata', () => { assert.strictEqual(heic.isTrashed(), true); const jpg = Object.values(nodes).find(n => n.name === '2026-03-12_Salute_Visita-specialistica_Dott-Mario-Rossi_Andrea-Agnoli_Referto-cardiologia_3.jpg' || (n.name || '').endsWith('Referto-cardiologia.jpg')); assert.ok(jpg, 'jpg non trovato'); const body = JSON.parse(G.__http.filter(h => h.url.indexOf('anthropic') >= 0)[0].opts.payload); assert.strictEqual(body.messages[0].content[0].source.media_type, 'image/jpeg'); });
 G.__httpHandler = () => claudeOk(bolletta);
 
 console.log('7. export Excel e reindex');

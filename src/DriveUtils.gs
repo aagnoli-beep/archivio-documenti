@@ -141,3 +141,21 @@ function ocrTextViaDrive(file) {
 function driveViewUrl_(fileId) {
   return 'https://drive.google.com/file/d/' + fileId + '/view';
 }
+
+function isHeic_(mime) { return /^image\/hei[cf]$/i.test(String(mime || '')); }
+
+/**
+ * Converte un HEIC (foto iPhone) in JPEG usando l'anteprima generata da Drive, perché Claude non legge HEIC.
+ * Crea <nome>.jpg nella stessa cartella e mette l'originale nel cestino. Lancia un errore se l'anteprima non è pronta.
+ */
+function convertHeicToJpeg_(file, folder) {
+  var meta = Drive.Files.get(file.getId(), { fields: 'thumbnailLink', supportsAllDrives: true });
+  if (!meta.thumbnailLink) throw new Error('Anteprima Drive non ancora disponibile per convertire ' + file.getName());
+  var url = meta.thumbnailLink.replace(/=s\d+(-c)?$/, '') + '=s2500';
+  var resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('Conversione HEIC fallita: HTTP ' + resp.getResponseCode());
+  var jpg = folder.createFile(resp.getBlob().setName(file.getName().replace(/\.hei[cf]$/i, '') + '.jpg').setContentType('image/jpeg'));
+  file.setTrashed(true);
+  logEvent('INFO', jpg.getName(), 'Foto HEIC convertita in JPEG');
+  return jpg;
+}
