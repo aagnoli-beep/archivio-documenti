@@ -16,9 +16,9 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 13); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
-t('due trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'exportIndexXlsx']); });
-t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 2); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 15); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('tre trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'sendDailyDigest', 'exportIndexXlsx']); });
+t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 3); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
 
 console.log('2. processInbox - caso normale');
@@ -126,6 +126,31 @@ G.__props.MCP_SECRET = 'chiave-di-famiglia-molto-lunga-123456';
 t('chiave di famiglia giusta -> accesso come proprietario con permessi di modifica', () => { const r = call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.strictEqual(r.user.canEdit, true); assert.strictEqual(r.user.name, 'Claude (MCP)'); });
 t('chiave sbagliata o corta -> rifiutata', () => { assert.strictEqual(call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-000000' }).code, 'forbidden'); assert.strictEqual(call({ action: 'index', secret: 'corta' }).code, 'forbidden'); });
 t('backup_xlsx restituisce l\'export piu recente', () => { const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(r.data === null || /^Indice_/.test(r.data.name)); });
+console.log('6b. rendiconto giornaliero via email');
+ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='DIGEST_EMAILS') r[1]='andrea@example.com, serena@example.com'; });
+G.__mail.length = 0; delete G.__props.DIGEST_LAST_AT;
+const nowStr = Utilities.formatDate(new Date(), '', 'yyyy-MM-dd HH:mm');
+getAllIndexRows().forEach((r, i) => { const row = ss.getSheetByName('Indice').rows[i + 1]; row[4] = nowStr; });
+G.__httpHandler = (url, opts) => { const b = JSON.parse(opts.payload || '{}'); const ids = getAllIndexRows().map(d => d.id); return { code: 200, body: { model: 'claude-opus-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ intro: 'Oggi è arrivata un po\' di posta.', documenti: ids.map(id => ({ id, testo: 'Descrizione semplice per ' + id + '.' })) }) }] } }; };
+sendDailyDigest();
+t('fino a 10 documenti -> email discorsiva ai destinatari con testi di Claude e link', () => { assert.strictEqual(G.__mail.length, 1); const m = G.__mail[0]; assert.strictEqual(m.to, 'andrea@example.com,serena@example.com'); assert.ok(m.subject.indexOf('documenti nuovi') > 0); assert.ok(m.htmlBody.indexOf('Descrizione semplice per') > 0); assert.ok(m.htmlBody.indexOf('Oggi è arrivata') > 0); assert.ok(m.htmlBody.indexOf('drive.google.com/file/d/') > 0); assert.ok(m.htmlBody.indexOf('da verificare') > 0); assert.ok(G.__props.DIGEST_LAST_AT); });
+sendDailyDigest();
+t('subito dopo -> nessun nuovo documento, nessuna email', () => { assert.strictEqual(G.__mail.length, 1); });
+delete G.__props.DIGEST_LAST_AT; G.__mail.length = 0;
+for (let i = 0; i < 12; i++) appendIndexRow({ id: 'tab' + i, nomeFile: 'doc' + i + '.pdf', titolo: 'Documento ' + i, categoria: 'Casa', dataDocumento: '2026-09-09', dataScansione: nowStr, mittente: 'Ente', soggetti: 'Andrea Agnoli', stato: 'Auto' });
+sendDailyDigest();
+t('da 11 a 30 documenti -> tabella senza chiamate a Claude', () => { assert.strictEqual(G.__mail.length, 1); const m = G.__mail[0]; assert.ok(m.htmlBody.indexOf('<table') > 0); assert.ok(m.htmlBody.indexOf('Documento 11') > 0); assert.ok(m.htmlBody.indexOf('Descrizione semplice') < 0); });
+delete G.__props.DIGEST_LAST_AT; G.__mail.length = 0;
+for (let i = 0; i < 25; i++) appendIndexRow({ id: 'many' + i, nomeFile: 'm' + i + '.pdf', titolo: 'M ' + i, categoria: 'Casa', dataDocumento: '2026-09-09', dataScansione: nowStr, stato: 'Auto' });
+sendDailyDigest();
+t('oltre 30 documenti -> solo conteggio', () => { const m = G.__mail[0]; assert.ok(/archiviati \d+ documenti/.test(m.htmlBody)); assert.ok(m.htmlBody.indexOf('<table') < 0); });
+G.__httpHandler = () => ({ code: 500, body: { error: { message: 'down' } } });
+delete G.__props.DIGEST_LAST_AT; G.__mail.length = 0;
+ss.getSheetByName('Indice').rows.splice(2 + 8);  // tiene i primi documenti
+sendDailyDigest();
+t('se Claude non risponde -> email comunque, con i riassunti', () => { assert.strictEqual(G.__mail.length, 1); assert.ok(G.__mail[0].htmlBody.indexOf('Archivio di casa') > 0); });
+G.__httpHandler = () => claudeOk(bolletta);
+
 console.log('7. export Excel e reindex');
 G.__httpHandler = (url) => ({ code: 200, body: '', bytes: [80, 75, 3, 4] });
 for (let i = 0; i < 14; i++) { exportIndexXlsx(); backup.children.forEach((c, k) => { if (/^Indice_/.test(c.name) && !c.trashed) c.name = 'Indice_2026-01-' + String(k + 1).padStart(2, '0') + '.xlsx'; }); }

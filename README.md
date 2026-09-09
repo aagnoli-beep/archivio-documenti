@@ -150,6 +150,9 @@ Sul telefono: app File → iCloud Drive → Archivio Documenti, oppure Spotlight
 
 Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato o la cartella è vuota non fa nulla; se la sorgente ha meno della metà dei file della copia si ferma e scrive nel log invece di cancellare.
 
+### 11. Rendiconto giornaliero via email
+Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIGEST_EMAILS` (foglio Config) un'email con i documenti scansionati dall'ultimo invio: fino a 10 con due righe discorsive scritte da Claude e i link, da 11 a 30 una tabella, oltre 30 solo il conteggio. Nessuna email se non è arrivato nulla. I documenti "da verificare" sono evidenziati. Per provarla subito: esegui `sendDailyDigest` dall'editor Apps Script.
+
 ## Uso quotidiano
 1. Arriva una lettera → la metti nello scanner → Scan.
 2. Entro 5 minuti il file è in `Archivio`, rinominato, con la riga nel foglio e visibile nel sito; entro altri 15 minuti (Mac acceso) compare anche nell'app File.
@@ -176,6 +179,7 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 | `DriveUtils.gs` | Nome file, slug ASCII, descrizione/proprietà Drive, OCR via Drive |
 | `Index.gs` | Foglio Indice e Log, export Excel |
 | `Alerts.gs` | Email di avviso (una al giorno per tipo) |
+| `Digest.gs` | Rendiconto giornaliero via email dei documenti scansionati |
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |

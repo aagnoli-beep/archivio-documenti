@@ -74,7 +74,9 @@ var DEFAULT_CONFIG = [
   ['GOOGLE_CLIENT_ID', '', 'Client ID OAuth di Google usato dal sito per "Accedi con Google"'],
   ['ALLOWED_EMAILS', '', 'Chi può entrare nel sito: email Google separate da virgola'],
   ['EDITOR_EMAILS', '', 'Chi può correggere i metadati e caricare documenti: email separate da virgola (vuoto = tutti gli ALLOWED)'],
-  ['SITE_URL', '', 'Indirizzo del sito (GitHub Pages), usato per il redirect e nelle email']
+  ['SITE_URL', '', 'Indirizzo del sito (GitHub Pages), usato per il redirect e nelle email'],
+  ['DIGEST_EMAILS', '', 'Destinatari del rendiconto giornaliero dei documenti scansionati (email separate da virgola; vuoto = disattivato)'],
+  ['DIGEST_HOUR', '20', 'Ora del rendiconto giornaliero (0-23)']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -164,6 +166,8 @@ function getConfig() {
     allowedEmails: splitEmails_(kv.ALLOWED_EMAILS),
     editorEmails: splitEmails_(kv.EDITOR_EMAILS),
     siteUrl: kv.SITE_URL || '',
+    digestEmails: splitEmails_(kv.DIGEST_EMAILS),
+    digestHour: Math.min(23, Math.max(0, parseInt(kv.DIGEST_HOUR, 10) || 20)),
     categories: categories,
     categoryNames: Object.keys(categories)
   };
