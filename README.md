@@ -125,6 +125,17 @@ Claude Desktop: in `~/Library/Application Support/Claude/claude_desktop_config.j
 ```
 e riavvia Claude Desktop. Claude Code: `claude mcp add archivio-di-casa -- node /percorso/al/repo/mcp/server.mjs`.
 
+### 10. Connettore MCP remoto (claude.ai su web e telefono)
+In `remote/` c'è un Cloudflare Worker (piano gratuito) che espone gli stessi strumenti come **connettore MCP remoto** con OAuth 2.1: claude.ai lo aggiunge da *Impostazioni → Connettori → Aggiungi connettore personalizzato* con l'indirizzo `https://<nome>.<sottodominio>.workers.dev/mcp`. Al primo uso si apre la pagina di accesso in cui si inserisce nome e **chiave di famiglia**; il Worker la verifica col backend e la conserva solo cifrata nel token del client.
+```bash
+cd remote && npm install --legacy-peer-deps
+npx wrangler login
+npx wrangler kv namespace create OAUTH_KV     # copia l'id in wrangler.jsonc
+npx wrangler deploy
+REMOTE_URL=https://<il-tuo-worker>.workers.dev node test.mjs   # test end-to-end (OAuth + MCP)
+```
+Claude Code: `claude mcp add --transport http archivio-di-casa https://<il-tuo-worker>.workers.dev/mcp`.
+
 #### Vecchia copia via Google Drive per desktop
 1. Installa **Google Drive per desktop** sul Mac (https://www.google.com/drive/download/) e accedi con l'account Google di Andrea. Nel Finder compare `Google Drive/Il mio Drive/Archivio Documenti`.
 2. Nel Finder, tasto destro sulla cartella `Archivio Documenti` → **Disponibile offline** (così i file sono davvero sul disco e non solo segnaposto).
@@ -170,7 +181,8 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
-| `../mcp/server.mjs` | Server MCP locale per Claude Desktop / Claude Code (`npm test` in `mcp/`) |
+| `../mcp/server.mjs`, `tools.mjs` | Server MCP locale (stdio) e strumenti condivisi (`npm test` in `mcp/`) |
+| `../remote/src/index.js` | Connettore MCP remoto su Cloudflare Workers con OAuth (`node test.mjs` in `remote/`) |
 | `../test/run.js` | 32 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
