@@ -4,3 +4,4 @@ node_modules/
 .DS_Store
 .claude/
 PRIVATE.md
+mcp/node_modules/

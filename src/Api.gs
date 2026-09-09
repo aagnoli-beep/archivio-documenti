@@ -33,7 +33,7 @@ function handleRequest_(e, method) {
   }
 
   try {
-    var user = verifyUser_(body.token || params.token, cfg);
+    var user = body.secret ? verifySecret_(body.secret, cfg) : verifyUser_(body.token || params.token, cfg);
     var data = dispatch_(action, user, body, cfg);
     return json_({ ok: true, user: user, data: data });
   } catch (err) {
@@ -47,6 +47,26 @@ function json_(obj) {
 
 function ApiError(code, message) { this.name = 'ApiError'; this.code = code; this.message = message; }
 ApiError.prototype = Object.create(Error.prototype);
+
+/**
+ * Accesso con la "chiave di famiglia" (Script Property MCP_SECRET): usata dal server MCP sul Mac.
+ * Chi la conosce agisce come il proprietario (può leggere, correggere e caricare).
+ */
+function verifySecret_(secret, cfg) {
+  var expected = getProp_('MCP_SECRET', false);
+  if (!expected || String(secret).length < 16 || !constantTimeEqual_(String(secret), String(expected))) {
+    throw new ApiError('forbidden', 'Chiave di famiglia non valida');
+  }
+  var owner = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  return { email: owner, name: 'Claude (MCP)', picture: '', canEdit: true };
+}
+
+function constantTimeEqual_(a, b) {
+  if (a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 /** Verifica il token Google e restituisce l'utente { email, name, picture, canEdit }. */
 function verifyUser_(token, cfg) {
@@ -97,6 +117,8 @@ function dispatch_(action, user, body, cfg) {
       return uploadToInbox(body.data, body.name, body.mime, user.email);
     case 'ask':
       return askArchive(String(body.question || ''), body.history || [], cfg);
+    case 'backup_xlsx':
+      return getLatestBackup_();
     default:
       throw new ApiError('bad_request', 'Azione sconosciuta: ' + action);
   }
@@ -151,4 +173,17 @@ function uploadToInbox(base64Data, fileName, mimeType, who) {
   var file = inbox.createFile(blob);
   logEvent('INFO', file.getName(), 'Caricato dal sito da ' + (who || 'utente'));
   return { id: file.getId(), name: file.getName() };
+}
+
+/** L'export Excel più recente della cartella Backup (base64), per la copia su iCloud. */
+function getLatestBackup_() {
+  var backup = DriveApp.getFolderById(getProp_(PROP.BACKUP_FOLDER_ID, true));
+  var it = backup.getFiles();
+  var best = null;
+  while (it.hasNext()) {
+    var f = it.next();
+    if (/^Indice_\d{4}-\d{2}-\d{2}\.xlsx$/.test(f.getName()) && (!best || f.getName() > best.getName())) best = f;
+  }
+  if (!best) return null;
+  return { name: best.getName(), size: best.getSize(), base64: Utilities.base64Encode(best.getBlob().getBytes()) };
 }

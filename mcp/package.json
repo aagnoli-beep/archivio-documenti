@@ -1,0 +1,16 @@
+{
+  "name": "archivio-documenti-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Server MCP locale per interrogare l'archivio documentale di famiglia da Claude",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  }
+}

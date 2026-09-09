@@ -122,6 +122,10 @@ const ans = call({ action: 'ask', token: 'good', question: 'Quando scade la boll
 t('chiedi: risposta con documenti citati (solo ID validi), schede nel prompt', () => { assert.strictEqual(ans.ok, true); assert.ok(ans.data.answer.indexOf('2026-09-20') > 0); assert.strictEqual(ans.data.docs.length, 1); assert.strictEqual(ans.data.docs[0].id, f1.getId()); const body = JSON.parse(G.__http.filter(h => h.url.indexOf('anthropic') >= 0)[0].opts.payload); assert.ok(body.messages[body.messages.length - 1].content.indexOf('SCHEDE DOCUMENTI') === 0); assert.strictEqual(body.messages.length, 3); assert.strictEqual(body.output_config.format.type, 'json_schema'); });
 t('chiedi: domanda vuota rifiutata', () => { assert.strictEqual(call({ action: 'ask', token: 'good', question: '  ' }).code, 'bad_request'); });
 t('azione sconosciuta -> bad_request', () => { assert.strictEqual(call({ action: 'boh', token: 'good' }).code, 'bad_request'); });
+G.__props.MCP_SECRET = 'chiave-di-famiglia-molto-lunga-123456';
+t('chiave di famiglia giusta -> accesso come proprietario con permessi di modifica', () => { const r = call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.strictEqual(r.user.canEdit, true); assert.strictEqual(r.user.name, 'Claude (MCP)'); });
+t('chiave sbagliata o corta -> rifiutata', () => { assert.strictEqual(call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-000000' }).code, 'forbidden'); assert.strictEqual(call({ action: 'index', secret: 'corta' }).code, 'forbidden'); });
+t('backup_xlsx restituisce l\'export piu recente', () => { const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(r.data === null || /^Indice_/.test(r.data.name)); });
 console.log('7. export Excel e reindex');
 G.__httpHandler = (url) => ({ code: 200, body: '', bytes: [80, 75, 3, 4] });
 for (let i = 0; i < 14; i++) { exportIndexXlsx(); backup.children.forEach((c, k) => { if (/^Indice_/.test(c.name) && !c.trashed) c.name = 'Indice_2026-01-' + String(k + 1).padStart(2, '0') + '.xlsx'; }); }

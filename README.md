@@ -108,6 +108,24 @@ Nell'app **ScanSnap Home** (Mac) o nell'app ScanSnap sul telefono:
 Importante: **un documento per scansione** (un job = un file). Se metti nell'ADF più documenti diversi in un colpo solo, verranno classificati come un unico documento. Se vuoi scansionare in blocco, attiva in ScanSnap Home la separazione con pagina bianca o con codice di separazione.
 
 ### 8. Copia su iCloud Drive per l'app File (famiglia Apple)
+La copia scarica i documenti direttamente dal backend (non dipende da Google Drive per desktop). Serve la **chiave di famiglia**: nel progetto Apps Script → Impostazioni → Proprietà dello script aggiungi `MCP_SECRET` con una stringa lunga e casuale, e sul Mac crea `~/.config/archivio-documenti/config.json`:
+```json
+{ "apiUrl": "https://script.google.com/macros/s/.../exec", "secret": "la-stessa-stringa" }
+```
+Poi attiva l'automatismo ogni 15 minuti con `bash sync/install.sh` (log in `~/Library/Logs/archivio-sync.log`). Su iPhone: app File → iCloud Drive → tieni premuto "Archivio Documenti" → Condividi → Collabora con la famiglia.
+
+### 9. Server MCP: chiedere all'archivio da Claude
+In `mcp/` c'è un server MCP locale (Node) che espone 6 strumenti: `cerca_documenti`, `dettaglio_documento`, `documenti_recenti`, `chiedi_archivio`, `scarica_documento`, `correggi_documento`. Usa la stessa chiave di famiglia letta da `~/.config/archivio-documenti/config.json`.
+```bash
+cd mcp && npm install && npm test
+```
+Claude Desktop: in `~/Library/Application Support/Claude/claude_desktop_config.json` aggiungi
+```json
+{ "mcpServers": { "archivio-di-casa": { "command": "node", "args": ["/percorso/al/repo/mcp/server.mjs"] } } }
+```
+e riavvia Claude Desktop. Claude Code: `claude mcp add archivio-di-casa -- node /percorso/al/repo/mcp/server.mjs`.
+
+#### Vecchia copia via Google Drive per desktop
 1. Installa **Google Drive per desktop** sul Mac (https://www.google.com/drive/download/) e accedi con l'account Google di Andrea. Nel Finder compare `Google Drive/Il mio Drive/Archivio Documenti`.
 2. Nel Finder, tasto destro sulla cartella `Archivio Documenti` → **Disponibile offline** (così i file sono davvero sul disco e non solo segnaposto).
 3. Attiva la sincronizzazione automatica ogni 15 minuti:
@@ -151,7 +169,8 @@ Protezioni dello script: legge soltanto da Google Drive; se Drive non è montato
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
-| `../sync/sync-icloud.sh`, `install.sh` | Copia Google Drive → iCloud Drive dal Mac, con avvio automatico launchd |
+| `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
+| `../mcp/server.mjs` | Server MCP locale per Claude Desktop / Claude Code (`npm test` in `mcp/`) |
 | `../test/run.js` | 32 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
