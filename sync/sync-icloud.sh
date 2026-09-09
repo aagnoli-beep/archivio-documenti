@@ -43,9 +43,22 @@ fi
 
 mkdir -p "$DST/Archivio"
 
-# 3. Archivio: specchio esatto (aggiunte, rinomine, rimozioni)
+# 3. Archivio: specchio esatto (aggiunte, rinomine, rimozioni).
+#    I file che Google Drive non ha ancora scaricato sul Mac ("streaming") fanno fallire rsync con
+#    "Resource deadlock avoided": in quel caso si copiano uno per uno, saltando quelli non pronti,
+#    che verranno ripresi al giro successivo.
 out=$(rsync -a --delete --exclude '.*' "$SRC/Archivio/" "$DST/Archivio/" 2>&1); rc=$?
-if [ $rc -ne 0 ]; then log "ERRORE rsync Archivio (rc=$rc): $out"; exit 1; fi
+if [ $rc -ne 0 ]; then
+  skipped=0
+  while IFS= read -r -d '' f; do
+    rel="${f#$SRC/Archivio/}"
+    [ -f "$DST/Archivio/$rel" ] && [ "$(stat -f %z "$f")" = "$(stat -f %z "$DST/Archivio/$rel")" ] && continue
+    mkdir -p "$(dirname "$DST/Archivio/$rel")"
+    if ! cp -p "$f" "$DST/Archivio/$rel.part" 2>/dev/null; then rm -f "$DST/Archivio/$rel.part"; skipped=$((skipped+1)); continue; fi
+    mv -f "$DST/Archivio/$rel.part" "$DST/Archivio/$rel"
+  done < <(find "$SRC/Archivio" -type f ! -name '.*' -print0)
+  log "AVVISO: rsync non riuscito (rc=$rc), copiati i file uno per uno; $skipped non ancora scaricati da Google Drive, riprovo tra 15 minuti"
+fi
 
 # 4. Indice Excel: copia l'export più recente come "Indice.xlsx"
 latest=$(ls -1 "$SRC/Backup"/Indice_*.xlsx 2>/dev/null | sort | tail -n 1)
