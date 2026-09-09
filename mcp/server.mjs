@@ -12,7 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { registerTools } from './tools.mjs';
+import { registerTools, callBackend } from './tools.mjs';
 
 function readLocalConfig() {
   try { return JSON.parse(readFileSync(path.join(os.homedir(), '.config', 'archivio-documenti', 'config.json'), 'utf8')); } catch { return {}; }
@@ -24,12 +24,7 @@ const DOWNLOAD_DIR = process.env.ARCHIVIO_DOWNLOAD_DIR || LOCAL.downloadDir || p
 
 export async function api(action, payload = {}) {
   if (!API_URL || !SECRET) throw new Error('Server MCP non configurato: mancano ARCHIVIO_API_URL o ARCHIVIO_SECRET');
-  const res = await fetch(API_URL, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, secret: SECRET, ...payload }) });
-  const txt = await res.text();
-  let json;
-  try { json = JSON.parse(txt); } catch { throw new Error('Risposta non valida dal backend (HTTP ' + res.status + '): ' + txt.slice(0, 200)); }
-  if (!json.ok) throw new Error(json.error || 'Errore del backend');
-  return json.data;
+  return callBackend(API_URL, SECRET, action, payload);
 }
 
 export function createServer() {

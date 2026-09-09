@@ -33,17 +33,57 @@ export function shortLine(d) {
   return `- [${d.id}] ${fmtDate(d.dataDocumento)} · ${d.titolo || d.nomeFile} · ${d.categoria}${d.sottocategoria ? ' › ' + d.sottocategoria : ''} · ${d.mittente || '?'} → ${d.soggetti || d.destinatario || '?'}${d.importo ? ' · ' + d.importo : ''}${d.stato && d.stato !== 'Auto' ? ' · ' + d.stato : ''}`;
 }
 
-/** Scarica un documento dal backend a pezzi (il backend limita ogni risposta a ~6 MB). */
-export async function downloadFile(api, id) {
-  const first = await api('file', { id });
-  const chunks = [Uint8Array.from(atob(first.base64), (c) => c.charCodeAt(0))];
-  let offset = first.offset + first.length;
-  let more = !!first.more;
+/**
+ * Chiamata al backend Apps Script con tentativi ripetuti: Google ogni tanto risponde con una pagina HTML
+ * di errore ("Impossibile aprire il file") anche a richieste corrette; riprovare dopo qualche secondo basta.
+ * `fetchImpl` deve restituire il testo della risposta; questa funzione fa il parse e i retry.
+ */
+export async function callBackend(apiUrl, secret, action, payload = {}, opts = {}) {
+  const retries = opts.retries ?? 3;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(apiUrl, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, secret, ...payload }) });
+      const txt = await res.text();
+      let json;
+      try { json = JSON.parse(txt); } catch { throw new Error('risposta non valida dal backend (HTTP ' + res.status + ')'); }
+      if (!json.ok) { const e = new Error(json.error || 'Errore del backend'); e.code = json.code; e.permanent = true; throw e; }
+      return json.data;
+    } catch (e) {
+      lastErr = e;
+      if (e.permanent || i === retries - 1) break;
+      await wait(2000 * (i + 1));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * Scarica un documento dal backend a pezzi da 3 MB, con tentativi ripetuti per ogni pezzo:
+ * Google ogni tanto risponde con una pagina di errore alle risposte grandi, e riprovare basta.
+ */
+export async function downloadFile(api, id, opts = {}) {
+  const chunk = opts.chunk || 3 * 1024 * 1024;
+  const retries = opts.retries ?? 3;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const getPart = async (offset) => {
+    let lastErr;
+    for (let i = 0; i < retries; i++) {
+      try { return await api('file', { id, offset, length: chunk }); }
+      catch (e) { lastErr = e; if (i < retries - 1) await wait(2000 * (i + 1)); }
+    }
+    throw lastErr;
+  };
+  const chunks = [];
+  let offset = 0, more = true, first = null;
   while (more) {
-    const part = await api('file', { id, offset });
+    const part = await getPart(offset);
+    if (!first) first = part;
     chunks.push(Uint8Array.from(atob(part.base64), (c) => c.charCodeAt(0)));
     offset = part.offset + part.length;
     more = !!part.more;
+    if (part.length === 0) break;
   }
   const total = chunks.reduce((n, c) => n + c.length, 0);
   const bytes = new Uint8Array(total);

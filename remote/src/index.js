@@ -12,20 +12,9 @@ import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { McpAgent } from 'agents/mcp';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { registerTools } from '../../mcp/tools.mjs';
+import { registerTools, callBackend as callBackendShared } from '../../mcp/tools.mjs';
 
-async function callBackend(apiUrl, secret, action, payload = {}) {
-  const res = await fetch(apiUrl, {
-    method: 'POST', redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, secret, ...payload })
-  });
-  const txt = await res.text();
-  let json;
-  try { json = JSON.parse(txt); } catch { throw new Error('Risposta non valida dal backend (HTTP ' + res.status + ')'); }
-  if (!json.ok) throw new Error(json.error || 'Errore del backend');
-  return json.data;
-}
+const callBackend = (apiUrl, secret, action, payload = {}) => callBackendShared(apiUrl, secret, action, payload, { retries: 2 });
 
 export class ArchivioMCP extends McpAgent {
   server = new McpServer({ name: 'archivio-di-casa', version: '1.1.0' });

@@ -17,7 +17,7 @@ import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { downloadFile } from '../mcp/tools.mjs';
+import { downloadFile, callBackend } from '../mcp/tools.mjs';
 const execFileP = promisify(execFile);
 
 const HOME = os.homedir();
@@ -43,12 +43,7 @@ async function main() {
   const archiveDir = path.join(dst, 'Archivio');
   await fs.mkdir(archiveDir, { recursive: true });
 
-  const api = async (action, payload = {}) => {
-    const res = await fetch(cfg.apiUrl, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action, secret: cfg.secret, ...payload }) });
-    const json = JSON.parse(await res.text());
-    if (!json.ok) throw new Error(json.error || 'errore backend');
-    return json.data;
-  };
+  const api = (action, payload = {}) => callBackend(cfg.apiUrl, cfg.secret, action, payload);
 
   const index = await api('index');
   const wanted = new Map();
