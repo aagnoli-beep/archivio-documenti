@@ -36,6 +36,20 @@ function mimeFor(name) {
   return { pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', heic: 'image/heic', heif: 'image/heif' }[ext] || 'application/octet-stream';
 }
 
+async function findDriveDesktopInbox() {
+  const base = path.join(HOME, 'Library', 'CloudStorage');
+  let entries = [];
+  try { entries = await fs.readdir(base); } catch { return null; }
+  for (const e of entries) {
+    if (!e.startsWith('GoogleDrive-')) continue;
+    for (const mine of ['Il mio Drive', 'My Drive']) {
+      const p = path.join(base, e, mine, 'Archivio Documenti', '00_Inbox');
+      try { if ((await fs.stat(p)).isDirectory()) return p; } catch {}
+    }
+  }
+  return null;
+}
+
 async function main() {
   let cfg;
   try { cfg = JSON.parse(await fs.readFile(CONFIG, 'utf8')); } catch { await log('SKIP: manca ' + CONFIG); return 0; }
@@ -72,7 +86,19 @@ async function main() {
     let st;
     try { st = await fs.stat(full); } catch { continue; }
     if (!st.isFile() || st.size === 0 || Date.now() - st.mtimeMs < 60 * 1000) continue;     // ancora in scrittura / sincronizzazione
-    if (st.size > 25 * 1024 * 1024) { await log(`AVVISO: "${name}" supera 25 MB, non inviato (riducilo o caricalo su Drive)`); continue; }
+    if (st.size > 25 * 1024 * 1024) {
+      // Troppo grande per il backend: se c'è Google Drive per desktop, lo metto direttamente nella 00_Inbox di Drive.
+      const gdInbox = await findDriveDesktopInbox();
+      if (!gdInbox) { await log(`AVVISO: "${name}" supera 25 MB e Google Drive per desktop non è attivo: caricalo a mano nella cartella 00_Inbox di Drive`); continue; }
+      try {
+        await fs.copyFile(full, path.join(gdInbox, name + '.part'));
+        await fs.rename(path.join(gdInbox, name + '.part'), path.join(gdInbox, name));
+        await fs.rm(full, { force: true });
+        sent++;
+        await log(`INVIATO alla Inbox tramite Google Drive per desktop (file grande): ${name}`);
+      } catch (e) { sendFailed++; await log(`AVVISO: "${name}" non copiato in Google Drive (${e.message}); riprovo tra 15 minuti`); }
+      continue;
+    }
     try {
       let uploadPath = full, uploadName = name, mime = mimeFor(name);
       if (/\.hei[cf]$/i.test(name)) {

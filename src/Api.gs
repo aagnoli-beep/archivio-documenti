@@ -183,6 +183,15 @@ function uploadToInbox(base64Data, fileName, mimeType, who) {
   if (!base64Data) throw new ApiError('bad_request', 'Nessun file ricevuto.');
   var inbox = DriveApp.getFolderById(getProp_(PROP.INBOX_FOLDER_ID, true));
   var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType || 'application/pdf', fileName || 'documento.pdf');
+  // Stesso nome e stessa dimensione caricati negli ultimi 15 minuti: è un ritentativo del client, non un nuovo file.
+  var dup = inbox.getFilesByName(blob.getName());
+  while (dup.hasNext()) {
+    var d = dup.next();
+    if (d.getSize() === blob.getBytes().length && Date.now() - d.getDateCreated().getTime() < 15 * 60 * 1000) {
+      logEvent('INFO', d.getName(), 'Upload ripetuto ignorato (stesso file già in Inbox)');
+      return { id: d.getId(), name: d.getName(), duplicate: true };
+    }
+  }
   var file = inbox.createFile(blob);
   logEvent('INFO', file.getName(), 'Caricato dal sito da ' + (who || 'utente'));
   return { id: file.getId(), name: file.getName() };

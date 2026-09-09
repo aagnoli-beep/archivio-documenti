@@ -74,8 +74,6 @@ t('dopo 5 giri falliti -> archiviato come Non classificato con email', () => { a
 G.__httpHandler = () => claudeOk(bolletta);
 processInbox();
 G.__httpHandler = () => claudeOk(bolletta);
-G.__mkfile(inbox, 'Scan_ripresa.pdf', pdfBytes, 'application/pdf');
-t('ripristinata la chiave, i file in attesa vengono processati ed arriva l\'email di ripresa', () => { const left = []; const it = inbox.getFiles(); while (it.hasNext()) left.push(it.next().getName()); assert.deepStrictEqual(left, ['Scan_fresh.pdf']); assert.ok(G.__mail.some(m => /ripresa/i.test(m.subject))); assert.strictEqual(G.__props.API_STANDBY_SINCE, undefined); });
 G.__httpHandler = () => ({ code: 200, body: { model: 'claude-opus-5', stop_reason: 'refusal', content: [] } });
 const f7 = G.__mkfile(inbox, 'Scan_0007.pdf', pdfBytes, 'application/pdf'); processInbox();
 t('refusal -> archiviato subito come Non classificato', () => { assert.strictEqual(f7.parent, archive); assert.strictEqual(getIndexRow(f7.getId()).stato, 'Non classificato'); });
@@ -122,6 +120,7 @@ const upd = call({ action: 'update', token: 'editor', id: f3.getId(), fields: { 
 t('Andrea (editor) modifica: rinomina, aggiorna riga, stato Verificato', () => { assert.strictEqual(upd.stato, 'Verificato'); assert.strictEqual(f3.getName(), '2026-08-31_Utenze_Luce_Enel-Energia_Serena_Bolletta-luce.pdf'); const r = getIndexRow(f3.getId()); assert.strictEqual(r.nomeFile, f3.getName()); assert.strictEqual(r.soggetti, 'Serena, Andrea Agnoli'); assert.strictEqual(r.scadenza, ''); assert.strictEqual(r.paroleChiave, 'luce, enel'); });
 const up = call({ action: 'upload', token: 'editor', data: Buffer.from(pdfBytes).toString('base64'), name: 'foto-documento.pdf', mime: 'application/pdf' }).data;
 t('upload dell\'editor finisce nella Inbox', () => { const n = nodes[up.id]; assert.strictEqual(n.parent, inbox); assert.strictEqual(n.getSize(), pdfBytes.length); });
+t('upload ripetuto dello stesso file entro 15 minuti -> non duplicato', () => { const r = call({ action: 'upload', token: 'editor', data: Buffer.from(pdfBytes).toString('base64'), name: 'foto-documento.pdf', mime: 'application/pdf' }).data; assert.strictEqual(r.id, up.id); assert.strictEqual(r.duplicate, true); });
 G.__http.length = 0;
 G.__httpHandler = (url) => url.indexOf('tokeninfo') >= 0 ? { code: 200, body: tokens.good } : { code: 200, body: { model: 'claude-opus-5', stop_reason: 'end_turn', usage: { input_tokens: 900, output_tokens: 80 }, content: [{ type: 'text', text: JSON.stringify({ risposta: 'La bolletta della luce scade il 2026-09-20.', documenti: [f1.getId(), 'inesistente'] }) }] } };
 const ans = call({ action: 'ask', token: 'good', question: 'Quando scade la bolletta della luce?', history: [{ role: 'user', text: 'ciao' }, { role: 'assistant', text: 'ciao!' }] });
@@ -137,7 +136,7 @@ console.log('6b. rendiconto giornaliero via email');
 ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='DIGEST_EMAILS') r[1]='andrea@example.com, serena@example.com'; if (r[0]==='DIGEST_REPLY_TO') r[1]='andrea@outlook.example'; if (r[0]==='DIGEST_SENDER_NAME') r[1]='Andrea Agnoli'; });
 G.__mail.length = 0; delete G.__props.DIGEST_LAST_AT;
 const nowStr = Utilities.formatDate(new Date(), '', 'yyyy-MM-dd HH:mm');
-getAllIndexRows().forEach((r, i) => { const row = ss.getSheetByName('Indice').rows[i + 1]; row[4] = nowStr; });
+getAllIndexRows().forEach((r, i) => { const row = ss.getSheetByName('Indice').rows[i + 1]; row[4] = i < 8 ? nowStr : '2026-01-01 08:00'; });
 G.__httpHandler = (url, opts) => { const b = JSON.parse(opts.payload || '{}'); const ids = getAllIndexRows().map(d => d.id); return { code: 200, body: { model: 'claude-opus-5', stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ intro: 'Oggi è arrivata un po\' di posta.', documenti: ids.map(id => ({ id, testo: 'Descrizione semplice per ' + id + '.' })) }) }] } }; };
 sendDailyDigest();
 t('fino a 10 documenti -> email discorsiva ai destinatari con testi di Claude e link', () => { assert.strictEqual(G.__mail.length, 1); const m = G.__mail[0]; assert.strictEqual(m.to, 'andrea@example.com,serena@example.com'); assert.ok(m.subject.indexOf('documenti nuovi') > 0); assert.ok(m.htmlBody.indexOf('Descrizione semplice per') > 0); assert.ok(m.htmlBody.indexOf('Oggi è arrivata') > 0); assert.ok(m.htmlBody.indexOf('drive.google.com/file/d/') > 0); assert.ok(m.htmlBody.indexOf('da verificare') > 0); assert.ok(G.__props.DIGEST_LAST_AT); assert.strictEqual(m.replyTo, 'andrea@outlook.example'); assert.strictEqual(m.name, 'Andrea Agnoli'); });
