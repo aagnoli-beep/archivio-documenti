@@ -11,11 +11,14 @@
 
 var MAX_RUN_MS = 4.5 * 60 * 1000;   // il limite Apps Script è 6 minuti: lasciamo margine
 var MAX_ATTEMPTS = 5;                // dopo N tentativi falliti il file viene archiviato come "Non classificato"
+var STANDBY_MS = 60 * 60 * 1000;     // dopo un errore di chiave/credito si riprova ogni ora (i file aspettano in Inbox)
 
 function processInbox() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) { console.log('processInbox: esecuzione già in corso, salto.'); return; }
   try {
+    var standbyUntil = parseInt(getProps_().getProperty('API_STANDBY_UNTIL'), 10) || 0;
+    if (standbyUntil > Date.now()) return;   // in attesa della ricarica: riprovo ogni ora
     var cfg = getConfig();
     var inbox = DriveApp.getFolderById(getProp_(PROP.INBOX_FOLDER_ID, true));
     var archive = DriveApp.getFolderById(getProp_(PROP.ARCHIVE_FOLDER_ID, true));
@@ -32,9 +35,12 @@ function processInbox() {
       try {
         processFile_(file, cfg, archive);
         done++;
+        if (getProps_().getProperty('API_STANDBY_SINCE')) notifyResumed_();
       } catch (e) {
         if (e.name === 'ClassifierError' && (e.code === 'auth' || e.code === 'credit')) {
-          logEvent('ERROR', file.getName(), 'Classificazione ferma (' + e.code + '): ' + e.message);
+          logEvent('ERROR', file.getName(), 'Classificazione in standby (' + e.code + '), riprovo tra un\'ora: ' + e.message);
+          getProps_().setProperty('API_STANDBY_UNTIL', String(Date.now() + STANDBY_MS));
+          getProps_().setProperty('API_STANDBY_SINCE', getProps_().getProperty('API_STANDBY_SINCE') || new Date().toISOString());
           alertApiProblem(e);
           break;   // inutile provare gli altri file
         }
@@ -206,4 +212,17 @@ function unflagAll() {
   range.setValues(values);
   logEvent('INFO', '', 'unflagAll: ' + n + ' documenti riportati ad Auto');
   console.log(n + ' documenti riportati ad Auto');
+}
+
+/** Dopo uno standby per chiave/credito: prima classificazione riuscita -> email di ripresa. */
+function notifyResumed_() {
+  var since = getProps_().getProperty('API_STANDBY_SINCE');
+  getProps_().deleteProperty('API_STANDBY_SINCE');
+  getProps_().deleteProperty('API_STANDBY_UNTIL');
+  getProps_().deleteProperty('ALERT_SENT_api_problem');
+  try {
+    MailApp.sendEmail({ to: getConfig().alertEmail, subject: '[Archivio Documenti] Classificazione ripresa', name: 'Archivio di casa',
+      body: 'La classificazione dei documenti è ripartita: la chiave API funziona di nuovo' + (since ? ' (era ferma dal ' + since.substring(0, 16).replace('T', ' ') + ')' : '') + '.\nI documenti rimasti in attesa vengono elaborati nei prossimi minuti.' });
+  } catch (e) { logEvent('WARN', '', 'Email di ripresa non inviata: ' + e.message); }
+  logEvent('INFO', '', 'Classificazione ripresa dopo lo standby');
 }

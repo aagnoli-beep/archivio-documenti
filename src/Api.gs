@@ -119,7 +119,9 @@ function dispatch_(action, user, body, cfg) {
     case 'ask':
       return askArchive(String(body.question || ''), body.history || [], cfg);
     case 'backup_xlsx':
-      return getLatestBackup_();
+      return getLatestBackup_(true);
+    case 'log':
+      return getLogRows_(parseInt(body.limit, 10) || 100);
     default:
       throw new ApiError('bad_request', 'Azione sconosciuta: ' + action);
   }
@@ -187,8 +189,14 @@ function uploadToInbox(base64Data, fileName, mimeType, who) {
 }
 
 /** L'export Excel più recente della cartella Backup (base64), per la copia su iCloud. */
-function getLatestBackup_() {
+function getLatestBackup_(refreshIfStale) {
   var backup = DriveApp.getFolderById(getProp_(PROP.BACKUP_FOLDER_ID, true));
+  if (refreshIfStale) {
+    var lastExport = parseInt(getProps_().getProperty('XLSX_LAST_EXPORT'), 10) || 0;
+    if (Date.now() - lastExport > 60 * 60 * 1000) {
+      try { exportIndexXlsx(); getProps_().setProperty('XLSX_LAST_EXPORT', String(Date.now())); } catch (e) { logEvent('WARN', '', 'Export Excel su richiesta fallito: ' + e.message); }
+    }
+  }
   var it = backup.getFiles();
   var best = null;
   while (it.hasNext()) {
@@ -197,4 +205,15 @@ function getLatestBackup_() {
   }
   if (!best) return null;
   return { name: best.getName(), size: best.getSize(), base64: Utilities.base64Encode(best.getBlob().getBytes()) };
+}
+
+/** Ultime righe del foglio Log (per il monitoraggio dal Mac / MCP). */
+function getLogRows_(limit) {
+  var sh = getSheet_(SHEET.LOG);
+  var last = sh.getLastRow();
+  if (last < 2) return [];
+  var n = Math.min(limit, last - 1);
+  return sh.getRange(last - n + 1, 1, n, 4).getValues().map(function (r) {
+    return { quando: r[0] instanceof Date ? Utilities.formatDate(r[0], 'Europe/Rome', 'yyyy-MM-dd HH:mm:ss') : String(r[0]), livello: r[1], file: r[2], messaggio: r[3] };
+  });
 }

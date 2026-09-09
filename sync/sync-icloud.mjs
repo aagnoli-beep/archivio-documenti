@@ -25,7 +25,8 @@ const LOG = path.join(HOME, 'Library', 'Logs', 'archivio-sync.log');
 const CONFIG = path.join(HOME, '.config', 'archivio-documenti', 'config.json');
 
 async function log(msg) {
-  const line = `${new Date().toISOString().replace('T', ' ').slice(0, 19)} ${msg}\n`;
+  const d = new Date(); const pad = (n) => String(n).padStart(2, '0');
+  const line = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${msg}\n`;
   await fs.appendFile(LOG, line);
   process.stdout.write(line);
 }

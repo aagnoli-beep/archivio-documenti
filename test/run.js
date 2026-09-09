@@ -64,6 +64,8 @@ t('401 -> file resta in Inbox, una sola email di avviso', () => { assert.strictE
 G.__httpHandler = () => ({ code: 400, body: { error: { message: 'Your credit balance is too low' } } });
 processInbox();
 t('credito esaurito -> stessa gestione, nessuna seconda email nello stesso giorno', () => { assert.strictEqual(f6.parent, inbox); assert.strictEqual(G.__mail.length, 1); });
+t('errore di credito -> standby di un\'ora: il giro successivo non chiama Claude', () => { const before = G.__http.length; processInbox(); assert.strictEqual(G.__http.length, before); assert.ok(parseInt(G.__props.API_STANDBY_UNTIL, 10) > Date.now()); assert.ok(G.__props.API_STANDBY_SINCE); });
+G.__props.API_STANDBY_UNTIL = '0';
 let calls = 0; G.__httpHandler = () => { calls++; return { code: 500, body: { error: { message: 'overloaded' } } }; };
 processInbox();
 t('500 -> 3 tentativi HTTP, file resta in Inbox, contatore tentativi = 1', () => { assert.strictEqual(calls, 3); assert.strictEqual(f6.parent, inbox); assert.strictEqual(G.__props['ATTEMPTS_' + f6.getId()], '1'); });
@@ -71,14 +73,17 @@ for (let i = 0; i < 4; i++) processInbox();
 t('dopo 5 giri falliti -> archiviato come Non classificato con email', () => { assert.strictEqual(f6.parent, archive); const r = getIndexRow(f6.getId()); assert.strictEqual(r.stato, 'Non classificato'); assert.ok(f6.getName().indexOf('_NonClassificato_') > 0); assert.strictEqual(G.__props['ATTEMPTS_' + f6.getId()], undefined); assert.strictEqual(G.__mail.length, 2); });
 G.__httpHandler = () => claudeOk(bolletta);
 processInbox();
-t('ripristinata la chiave, i file in attesa vengono processati', () => { assert.strictEqual(inbox.getFiles().hasNext(), true); /* solo il file "fresh" resta */ const left = []; const it = inbox.getFiles(); while (it.hasNext()) left.push(it.next().getName()); assert.deepStrictEqual(left, ['Scan_fresh.pdf']); });
+G.__httpHandler = () => claudeOk(bolletta);
+G.__mkfile(inbox, 'Scan_ripresa.pdf', pdfBytes, 'application/pdf');
+t('ripristinata la chiave, i file in attesa vengono processati ed arriva l\'email di ripresa', () => { const left = []; const it = inbox.getFiles(); while (it.hasNext()) left.push(it.next().getName()); assert.deepStrictEqual(left, ['Scan_fresh.pdf']); assert.ok(G.__mail.some(m => /ripresa/i.test(m.subject))); assert.strictEqual(G.__props.API_STANDBY_SINCE, undefined); });
 G.__httpHandler = () => ({ code: 200, body: { model: 'claude-opus-5', stop_reason: 'refusal', content: [] } });
 const f7 = G.__mkfile(inbox, 'Scan_0007.pdf', pdfBytes, 'application/pdf'); processInbox();
 t('refusal -> archiviato subito come Non classificato', () => { assert.strictEqual(f7.parent, archive); assert.strictEqual(getIndexRow(f7.getId()).stato, 'Non classificato'); });
 G.__httpHandler = () => claudeOk(bolletta);
 G.__props.ANTHROPIC_API_KEY = '';
 const f8 = G.__mkfile(inbox, 'Scan_0008.pdf', pdfBytes, 'application/pdf'); G.__props.ALERT_SENT_api_problem = '2000-01-01'; processInbox();
-t('chiave mancante -> avviso e file in attesa', () => { assert.strictEqual(f8.parent, inbox); assert.strictEqual(G.__mail.length, 3); });
+t('chiave mancante -> avviso e file in attesa', () => { assert.strictEqual(f8.parent, inbox); assert.ok(G.__mail.some(m => /chiave API/.test(m.subject))); });
+G.__props.API_STANDBY_UNTIL = '0'; delete G.__props.API_STANDBY_SINCE;
 G.__props.ANTHROPIC_API_KEY = 'sk-test';
 
 console.log('5. PDF grande e immagini');
@@ -126,7 +131,8 @@ t('azione sconosciuta -> bad_request', () => { assert.strictEqual(call({ action:
 G.__props.MCP_SECRET = 'chiave-di-famiglia-molto-lunga-123456';
 t('chiave di famiglia giusta -> accesso come proprietario con permessi di modifica', () => { const r = call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.strictEqual(r.user.canEdit, true); assert.strictEqual(r.user.name, 'Claude (MCP)'); });
 t('chiave sbagliata o corta -> rifiutata', () => { assert.strictEqual(call({ action: 'index', secret: 'chiave-di-famiglia-molto-lunga-000000' }).code, 'forbidden'); assert.strictEqual(call({ action: 'index', secret: 'corta' }).code, 'forbidden'); });
-t('backup_xlsx restituisce l\'export piu recente', () => { const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(r.data === null || /^Indice_/.test(r.data.name)); });
+t('backup_xlsx rigenera l\'export se vecchio e lo restituisce', () => { G.__httpHandler = (url) => url.indexOf('export?format=xlsx') > 0 ? { code: 200, body: '', bytes: [80, 75, 3, 4] } : claudeOk(bolletta); const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(/^Indice_/.test(r.data.name)); assert.ok(G.__props.XLSX_LAST_EXPORT); G.__httpHandler = () => claudeOk(bolletta); });
+t('log: ultime righe leggibili con la chiave di famiglia', () => { const r = call({ action: 'log', secret: 'chiave-di-famiglia-molto-lunga-123456', limit: 5 }); assert.strictEqual(r.ok, true); assert.strictEqual(r.data.length, 5); assert.ok(r.data[4].livello && r.data[4].quando); });
 console.log('6b. rendiconto giornaliero via email');
 ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='DIGEST_EMAILS') r[1]='andrea@example.com, serena@example.com'; if (r[0]==='DIGEST_REPLY_TO') r[1]='andrea@outlook.example'; if (r[0]==='DIGEST_SENDER_NAME') r[1]='Andrea Agnoli'; });
 G.__mail.length = 0; delete G.__props.DIGEST_LAST_AT;

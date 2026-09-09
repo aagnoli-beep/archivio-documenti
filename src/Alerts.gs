@@ -32,7 +32,7 @@ function alertApiProblem(err) {
     'Cosa fare:\n' +
     '1. Apri https://console.anthropic.com e controlla che la chiave API sia valida e che ci sia credito.\n' +
     '2. Se serve, aggiorna la Script Property ANTHROPIC_API_KEY nell\'editor Apps Script.\n\n' +
-    'I documenti scansionati NON sono persi: restano nella cartella 00_Inbox e verranno ' +
-    'classificati automaticamente appena il problema è risolto.';
+    'I documenti scansionati NON sono persi: restano nella cartella 00_Inbox. Lo script riprova da solo ogni ora ' +
+    'e riprende appena la chiave funziona di nuovo (riceverai un\'email di conferma).';
   return sendAlertOnce('api_problem', 'Classificazione ferma: controlla chiave API / credito', msg);
 }
