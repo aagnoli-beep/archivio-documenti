@@ -50,6 +50,15 @@ async function findDriveDesktopInbox() {
   return null;
 }
 
+/** Cartella Archivio vista da Google Drive per desktop: serve per i file troppo grandi da scaricare dal backend. */
+async function findDriveDesktopArchive() {
+  const inbox = await findDriveDesktopInbox();
+  if (!inbox) return null;
+  const p = path.join(path.dirname(inbox), 'Archivio');
+  try { if ((await fs.stat(p)).isDirectory()) return p; } catch {}
+  return null;
+}
+
 async function main() {
   let cfg;
   try { cfg = JSON.parse(await fs.readFile(CONFIG, 'utf8')); } catch { await log('SKIP: manca ' + CONFIG); return 0; }
@@ -130,6 +139,21 @@ async function main() {
       written.add(name);
       added++;
     } catch (e) {
+      // Oltre 60 MB il backend non può restituire il file: lo prendo dalla copia locale di Google Drive per desktop.
+      const gdArchive = /troppo grande/i.test(String(e.message)) ? await findDriveDesktopArchive() : null;
+      if (gdArchive) {
+        try {
+          await fs.copyFile(path.join(gdArchive, name), dest + '.part');
+          await fs.rename(dest + '.part', dest);
+          written.add(name);
+          added++;
+          await log(`COPIATO da Google Drive per desktop (file grande): ${name}`);
+          continue;
+        } catch (e2) {
+          await fs.rm(dest + '.part', { force: true }).catch(() => {});
+          e = new Error(e.message + '; copia da Google Drive per desktop fallita: ' + e2.message);
+        }
+      }
       failed++;
       await log(`AVVISO: non scaricato "${name}": ${e.message}`);
     }
