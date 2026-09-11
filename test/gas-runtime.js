@@ -19,6 +19,7 @@ const nodes = {};   // id -> node
 class Blob {
   constructor(bytes, mime, name) { this.bytes = bytes; this.mime = mime; this.name = name; }
   getBytes() { return this.bytes; } getName() { return this.name; } setName(n) { this.name = n; return this; }
+  getDataAsString() { return Buffer.from(Array.from(this.bytes, (b) => b & 255)).toString('latin1'); }
   getContentType() { return this.mime; } setContentType(m) { this.mime = m; return this; } copyBlob() { return new Blob(this.bytes.slice(), this.mime, this.name); } getSize() { return this.bytes.length; }
 }
 class Node {
@@ -127,7 +128,7 @@ G.MailApp = { sendEmail: (m) => { G.__mail.push(m); } };
 G.__labels = {}; G.__threads = [];
 class GLabel { constructor(n) { this.name = n; } getName() { return this.name; } }
 class GMessage { constructor(t, o) { this.t = t; this.o = o; this.id = 'm' + (idSeq++); }
-  getId() { return this.id; } getFrom() { return this.o.from; } getTo() { return this.o.to || ''; } getSubject() { return this.o.subject || ''; }
+  getId() { return this.id; } getThread() { return this.t; } getFrom() { return this.o.from; } getTo() { return this.o.to || ''; } getSubject() { return this.o.subject || ''; }
   getDate() { return this.o.date || new Date(); } getBody() { return this.o.body || ''; } getPlainBody() { return this.o.plain || ''; }
   getAttachments() { return (this.o.attachments || []).map((a) => new Blob(a.bytes || Array.from(Buffer.from('x'.repeat(a.size || 10))), a.mime, a.name)); } }
 class GThread { constructor(o) { this.id = 't' + (idSeq++); this.labels = []; this.msgs = (o.messages || [o]).map((m) => new GMessage(this, m)); this.deliveredTo = o.deliveredTo || ''; }
@@ -138,7 +139,11 @@ G.GmailApp = {
   getUserLabelByName: (n) => G.__labels[n] || null,
   createLabel: (n) => { G.__labels[n] = new GLabel(n); return G.__labels[n]; },
   search: (q, start, max) => { const addr = (q.match(/deliveredto:(\S+)/) || [])[1]; const excluded = [...q.matchAll(/-label:(\S+)/g)].map((m) => m[1]);
-    return G.__threads.filter((t) => t.deliveredTo === addr && !t.labels.some((l) => excluded.includes(l))).slice(start || 0, (start || 0) + (max || 50)); }
+    const words = q.replace(/-?\w+:\S+/g, '').trim().toLowerCase();
+    return G.__threads.filter((t) => (addr ? t.deliveredTo === addr : true) && !t.labels.some((l) => excluded.includes(l))
+      && (!words || t.getMessages().some((m) => (m.getSubject() + ' ' + m.getFrom()).toLowerCase().includes(words))))
+      .slice(start || 0, (start || 0) + (max || 50)); },
+  getMessageById: (id) => { for (const t of G.__threads) for (const m of t.getMessages()) if (m.getId() === id) return m; return null; }
 };
 G.__cache = {};
 G.CacheService = { getScriptCache: () => ({ get: (k) => (k in G.__cache ? G.__cache[k] : null), put: (k, v) => { G.__cache[k] = v; }, remove: (k) => { delete G.__cache[k]; } }) };

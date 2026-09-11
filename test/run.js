@@ -16,7 +16,7 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 19); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 20); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
 t('quattro trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'processMailIntake', 'sendDailyDigest', 'exportIndexXlsx']); });
 t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 4); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
@@ -83,6 +83,20 @@ const f8 = G.__mkfile(inbox, 'Scan_0008.pdf', pdfBytes, 'application/pdf'); G.__
 t('chiave mancante -> avviso e file in attesa', () => { assert.strictEqual(f8.parent, inbox); assert.ok(G.__mail.some(m => /chiave API/.test(m.subject))); });
 G.__props.API_STANDBY_UNTIL = '0'; delete G.__props.API_STANDBY_SINCE;
 G.__props.ANTHROPIC_API_KEY = 'sk-test';
+
+console.log('4b. PDF molto lunghi');
+G.__httpHandler = () => claudeOk(bolletta);
+G.__http.length = 0;
+const pagineFinte = (n) => Array.from(Buffer.from('%PDF-1.4\n1 0 obj << /Type /Pages /Count ' + n + ' /Kids [] >>\n' + '<< /Type /Page >>\n'.repeat(n) + '%%EOF'));
+t('countPdfPages_ legge /Count e /Type /Page', () => { assert.strictEqual(countPdfPages_(pagineFinte(3)), 3); assert.strictEqual(countPdfPages_(Array.from(Buffer.from('%PDF-1.4 << /Type /Page >> << /Type /Page >>'))), 2); assert.strictEqual(countPdfPages_(Array.from(Buffer.from('nessuna pagina'))), 0); });
+const copiaOrig = G.Drive.Files.copy;
+G.Drive.Files.copy = (res, id, opt) => { const r = copiaOrig(res, id, opt); G.__docs[r.id] = 'CONDIZIONI GENERALI DI POLIZZA. ' + 'Articolo 1 - Oggetto della copertura assicurativa per il contraente Andrea Agnoli. '.repeat(10); return r; };
+const lungo = G.__mkfile(inbox, 'Condizioni_polizza.pdf', pagineFinte(80), 'application/pdf'); processInbox();
+G.Drive.Files.copy = copiaOrig;
+t('PDF di 80 pagine -> classificato dal testo, non dal PDF intero', () => { const body = G.__http.map(h => JSON.parse(h.opts.payload)).pop(); assert.strictEqual(body.messages[0].content[0].type, 'text'); assert.ok(/80 pagine/.test(body.messages[0].content[0].text)); assert.strictEqual(lungo.parent, archive); });
+G.__http.length = 0;
+const corto = G.__mkfile(inbox, 'Bolletta_breve.pdf', pagineFinte(4), 'application/pdf'); processInbox();
+t('PDF di 4 pagine -> inviato intero come document', () => { const body = G.__http.map(h => JSON.parse(h.opts.payload)).pop(); assert.strictEqual(body.messages[0].content[0].type, 'document'); assert.strictEqual(corto.parent, archive); });
 
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };
@@ -208,6 +222,35 @@ ss.getSheetByName('Config').rows.forEach(r => { if (r[0] === 'MODEL') r[1] = 'cl
 G.__http.length = 0; G.__httpHandler = () => claudeOk(bolletta);
 G.__mkfile(inbox, 'Scan_haiku.pdf', pdfBytes, 'application/pdf'); processInbox();
 t('richiesta per Haiku senza effort, fallbacks e header beta', () => { const req = G.__http[0]; const body = JSON.parse(req.opts.payload); assert.strictEqual(body.model, 'claude-haiku-4-5'); assert.strictEqual(body.output_config.effort, undefined); assert.strictEqual(body.fallbacks, undefined); assert.strictEqual(req.opts.headers['anthropic-beta'], undefined); });
+
+
+// --- recupero documenti dalle email già ricevute (MailArchive.gs) ---
+G.__threads.length = 0; G.__labels = {};
+const thScan = G.__mkthread({ from: 'Ospedale <info@ulss.it>', to: 'andrea@example.com', subject: 'Referto di Giacomo',
+  date: new Date('2026-05-04T10:00:00Z'), deliveredTo: 'andrea@example.com',
+  attachments: [{ name: 'referto.pdf', mime: 'application/pdf', size: 5000 }, { name: 'logo.png', mime: 'image/png', size: 900 }] });
+G.__mkthread({ from: 'Spam <no@promo.it>', to: 'andrea@example.com', subject: 'Offerta', date: new Date(),
+  deliveredTo: 'andrea@example.com', attachments: [] });
+const scan = scanMailbox('has:attachment referto', 20);
+t('scanMailbox trova solo i messaggi con allegati utili', () => {
+  assert.strictEqual(scan.messages.length, 1);
+  assert.strictEqual(scan.messages[0].oggetto, 'Referto di Giacomo');
+  assert.deepStrictEqual(scan.messages[0].allegati.map(a => a.name), ['referto.pdf', 'logo.png']);
+});
+const primaImport = inboxCount();
+const imp = importMailAttachments([{ id: thScan.getMessages()[0].getId(), names: ['referto.pdf'] }]);
+t('importMailAttachments salva in Inbox solo gli allegati richiesti', () => {
+  assert.strictEqual(imp.saved, 1);
+  assert.strictEqual(inboxCount(), primaImport + 1);
+  assert.ok(/^2026-05-04_email_/.test(imp.files[0]), 'nome con data e prefisso email: ' + imp.files[0]);
+  assert.ok(thScan.labels.includes('Archivio/Importate'), 'conversazione etichettata');
+});
+t('importMailAttachments segnala i messaggi inesistenti senza fermarsi', () => {
+  const r = importMailAttachments([{ id: 'inesistente' }]);
+  assert.strictEqual(r.saved, 0);
+  assert.strictEqual(r.errors.length, 1);
+});
+
 
 console.log('\n' + passed + ' test superati' + (process.exitCode ? ', CI SONO FALLIMENTI' : ', nessun fallimento'));
 console.log('\nEsempio di Indice (prime 4 righe):');

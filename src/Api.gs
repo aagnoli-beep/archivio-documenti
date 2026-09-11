@@ -120,6 +120,12 @@ function dispatch_(action, user, body, cfg) {
       return askArchive(String(body.question || ''), body.history || [], cfg);
     case 'backup_xlsx':
       return getLatestBackup_(true);
+    case 'mail_scan':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per leggere la posta');
+      return scanMailbox(String(body.query || ''), body.limit);
+    case 'mail_import':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per importare');
+      return importMailAttachments(body.items || []);
     case 'log':
       return getLogRows_(parseInt(body.limit, 10) || 100);
     default:

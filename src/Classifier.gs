@@ -81,13 +81,41 @@ function supportsFallbacks_(model) {
  * Prepara il content block del file: PDF intero (base64) se piccolo, immagine se è un'immagine,
  * altrimenti testo estratto con l'OCR di Drive.
  */
+/**
+ * Conta le pagine di un PDF cercando gli oggetti /Type /Page (o il /Count dell'albero /Pages).
+ * Restituisce 0 se non riesce (per esempio con object stream compressi): in quel caso il PDF va inviato intero.
+ */
+function countPdfPages_(bytes) {
+  var s = Utilities.newBlob(bytes).getDataAsString('ISO-8859-1');
+  var count = 0, m;
+  var re = /\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages\b/g;
+  while ((m = re.exec(s)) !== null) count = Math.max(count, parseInt(m[1] || m[2], 10) || 0);
+  if (count) return count;
+  var pages = s.match(/\/Type\s*\/Page(?![A-Za-z])/g);
+  return pages ? pages.length : 0;
+}
+
 function buildFileBlock_(file, cfg) {
   var mime = file.getMimeType();
   var size = file.getSize();
   if (mime === MimeType.PDF && size <= cfg.maxPdfBytes) {
+    var bytes = file.getBlob().getBytes();
+    var pages = countPdfPages_(bytes);
+    if (pages > (cfg.longPdfPages || 30)) {
+      // Documenti molto lunghi (condizioni di polizza, contratti bancari): per classificarli bastano le prime
+      // pagine di testo, e costano una frazione del PDF intero. Il file archiviato resta comunque completo.
+      try {
+        var longText = ocrTextViaDrive(file);
+        if (longText && longText.trim().length >= 200) {
+          return { type: 'text', text: 'Testo estratto dal documento (' + pages + ' pagine; qui solo la parte iniziale):\n\n' + longText.substring(0, 40000) };
+        }
+      } catch (e) {
+        logEvent('WARN', file.getName(), 'Testo non estraibile da un PDF di ' + pages + ' pagine, invio il PDF intero: ' + e.message);
+      }
+    }
     return {
       type: 'document',
-      source: { type: 'base64', media_type: 'application/pdf', data: Utilities.base64Encode(file.getBlob().getBytes()) }
+      source: { type: 'base64', media_type: 'application/pdf', data: Utilities.base64Encode(bytes) }
     };
   }
   if ((mime === MimeType.JPEG || mime === MimeType.PNG || mime === 'image/webp') && size <= IMAGE_MAX_BYTES) {
