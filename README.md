@@ -173,6 +173,9 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 - **Documento in Archivio senza riga nel foglio**: esegui `reindexMissing()` in Apps Script.
 - **Test manuale della classificazione** senza spostare nulla: metti un PDF in Inbox ed esegui `testClassifyFirstInboxFile()`, il risultato JSON è nel log di esecuzione.
 - **Cambiare modello o costi**: nel foglio `Config` la riga `MODEL` (es. `claude-haiku-4-5` costa circa 5 volte meno, con classificazioni un po' meno precise).
+- **Documenti lunghi e costi**: nel foglio `Config` la riga `LONG_PDF_PAGES` (30) indica sopra quante pagine il PDF viene classificato leggendo il testo invece di mandare il documento intero. Il file archiviato resta comunque completo; serve solo a non spendere credito per condizioni di polizza e contratti lunghi.
+- **PDF protetti da password**: l'API li rifiuta, quindi il classificatore riprova da solo con il testo estratto da Drive. Se anche quello è vuoto il documento viene archiviato come *Non classificato*, senza fermare la coda.
+- **Ripescare documenti da vecchie email**: le azioni `mail_scan` e `mail_import` dell'API cercano nella casella Gmail del proprietario i messaggi con allegati e importano solo quelli indicati; le conversazioni importate prendono l'etichetta `Archivio/Importate`.
 - **Backup**: ogni notte un file Excel dell'indice in `Backup/`, copiato anche su iCloud come `Indice.xlsx`. Puoi anche generarlo subito eseguendo `exportIndexXlsx()`.
 
 ## Struttura del codice (`src/`)
@@ -187,6 +190,7 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 | `Alerts.gs` | Email di avviso (una al giorno per tipo) |
 | `Digest.gs` | Rendiconto giornaliero via email dei documenti scansionati |
 | `MailIntake.gs` | Ingresso documenti via email (allegati o email → PDF) |
+| `MailArchive.gs` | Ripesca documenti dalle email già ricevute: `mail_scan` elenca i messaggi con allegati, `mail_import` salva in Inbox solo quelli scelti |
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
@@ -194,6 +198,6 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
 | `../mcp/server.mjs`, `tools.mjs` | Server MCP locale (stdio) e strumenti condivisi (`npm test` in `mcp/`) |
 | `../remote/src/index.js` | Connettore MCP remoto su Cloudflare Workers con OAuth (`node test.mjs` in `remote/`) |
-| `../test/run.js` | 32 scenari della pipeline in un Apps Script simulato: `npm test` |
+| `../test/run.js` | 66 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
