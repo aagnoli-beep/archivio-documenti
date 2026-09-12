@@ -163,7 +163,22 @@ function classifyDocument(file, cfg) {
     headers['anthropic-beta'] = FALLBACK_BETA;
   }
 
-  var resp = fetchWithRetry_(body, headers);
+  var resp;
+  try {
+    resp = fetchWithRetry_(body, headers);
+  } catch (e) {
+    // Alcuni PDF (per esempio le ricette elettroniche) sono protetti da password: l'API li rifiuta.
+    // In questi casi riprovo con il testo estratto da Drive, così il documento viene comunque classificato.
+    if (e.code === 'pdf' && fileBlock.type === 'document') {
+      var salvataggio = ocrTextViaDrive(file);
+      if (!salvataggio || salvataggio.trim().length < 20) throw e;
+      logEvent('WARN', file.getName(), 'PDF non leggibile dall\'API (' + e.message.substring(0, 60) + '): classifico dal testo');
+      body.messages[0].content[0] = { type: 'text', text: 'Testo estratto dal documento (OCR):\n\n' + salvataggio.substring(0, 60000) };
+      resp = fetchWithRetry_(body, headers);
+    } else {
+      throw e;
+    }
+  }
   var data = JSON.parse(resp.getContentText());
   if (data.stop_reason === 'refusal') {
     throw new ClassifierError('refusal', 'Il modello ha rifiutato di elaborare il documento', false);
@@ -206,6 +221,7 @@ function fetchWithRetry_(body, headers) {
     try { errMsg = JSON.parse(resp.getContentText()).error.message; } catch (e) { errMsg = resp.getContentText().substring(0, 300); }
     if (code === 401 || code === 403) throw new ClassifierError('auth', 'HTTP ' + code + ': ' + errMsg, false);
     if (code === 400 && /credit|balance|billing/i.test(errMsg)) throw new ClassifierError('credit', 'HTTP 400: ' + errMsg, false);
+    if (code === 400 && /pdf/i.test(errMsg)) throw new ClassifierError('pdf', 'HTTP 400: ' + errMsg, false);
     if (code === 400 || code === 404 || code === 413) throw new ClassifierError('bad_request', 'HTTP ' + code + ': ' + errMsg, false);
     if (code === 429) { lastErr = new ClassifierError('rate_limit', 'HTTP 429: ' + errMsg, true); continue; }
     lastErr = new ClassifierError('server', 'HTTP ' + code + ': ' + errMsg, true);

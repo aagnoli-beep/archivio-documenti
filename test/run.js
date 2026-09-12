@@ -98,6 +98,23 @@ G.__http.length = 0;
 const corto = G.__mkfile(inbox, 'Bolletta_breve.pdf', pagineFinte(4), 'application/pdf'); processInbox();
 t('PDF di 4 pagine -> inviato intero come document', () => { const body = G.__http.map(h => JSON.parse(h.opts.payload)).pop(); assert.strictEqual(body.messages[0].content[0].type, 'document'); assert.strictEqual(corto.parent, archive); });
 
+console.log('4c. PDF rifiutato dall\'API');
+G.__http.length = 0;
+let primaChiamata = true;
+G.__httpHandler = () => {
+  if (primaChiamata) { primaChiamata = false; return { code: 400, body: { error: { message: 'messages.0.content.0.pdf.source.base64.data: The PDF specified is password protected.' } } }; }
+  return claudeOk(bolletta);
+};
+const protetto = G.__mkfile(inbox, 'Ricetta_protetta.pdf', pdfBytes, 'application/pdf'); processInbox();
+t('PDF protetto da password -> riprova con il testo e classifica', () => {
+  const bodies = G.__http.map(h => JSON.parse(h.opts.payload));
+  assert.strictEqual(bodies[0].messages[0].content[0].type, 'document');
+  assert.ok(bodies.some(b => b.messages[0].content[0].type === 'text'), 'nessun secondo tentativo con il testo');
+  assert.strictEqual(protetto.parent, archive);
+  assert.strictEqual(getIndexRow(protetto.getId()).stato, 'Auto');
+});
+G.__httpHandler = () => claudeOk(bolletta);
+
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };
 G.__httpHandler = () => claudeOk(referto);
