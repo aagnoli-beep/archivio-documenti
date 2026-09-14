@@ -171,9 +171,20 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 - cartelle personali: Scrivania, Download, Documenti, iCloud Drive e la cartella dello scanner del telefono;
 - **foto**: la libreria Foto del Mac (una foto di un documento viene letta con l'OCR);
 - **email personali**: gli allegati delle caselle configurate in `postaPersonale`; le caselle di lavoro vengono riconosciute e saltate;
-- **WhatsApp Desktop**: i file ricevuti, quando l'app è installata sul Mac.
+- **WhatsApp personale**: letto da **WhatsApp Web** con un profilo Chrome dedicato. L'app WhatsApp installata sul Mac è quella **Business**, cioè di lavoro, e non viene mai toccata.
 
 Di ogni file nuovo estrae il testo (`pdftotext`, e `tesseract` per scansioni e foto), scarta il rumore in locale e manda **solo il testo** al backend, che con l'azione `judge` chiede a Claude se è un documento di famiglia. Carica in `00_Inbox` solo quelli approvati: poi segue la pipeline di sempre. Nessun file viene spostato o cancellato dal Mac, e la chiave API resta nelle Script Properties.
+
+### WhatsApp personale, una volta sola
+Il numero personale vive su WhatsApp Web. Per collegarlo alla raccolta:
+
+```bash
+node harvest/whatsapp-web.mjs --login
+```
+
+Si apre una finestra di Chrome con il codice QR: inquadralo con WhatsApp del **telefono personale** (Impostazioni → Dispositivi collegati). Il collegamento resta valido per mesi e usa un profilo Chrome tutto suo, in `~/.config/archivio-documenti/whatsapp-profile`, separato dal Chrome di tutti i giorni e da WhatsApp Business.
+
+Ogni notte il programma apre WhatsApp Web senza finestra, guarda le chat più recenti e salva gli allegati nuovi in `~/.config/archivio-documenti/whatsapp-inbox`; la raccolta li valuta come tutti gli altri. Non invia messaggi e non segna niente come letto. Se la sessione scade arriva **un'email di avviso** con il comando da rilanciare, e il resto della raccolta continua a funzionare.
 
 Installazione: `bash harvest/install.sh` (per toglierla: `bash harvest/install.sh --uninstall`).
 Prova senza caricare niente: `node harvest/daily-harvest.mjs --dry-run --days 7 --verbose`.
@@ -220,11 +231,13 @@ Nel foglio `Config` la riga `JUDGE_MODEL` (`claude-sonnet-5`) è il modello che 
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
 | `Judge.gs` | Decide quali documenti trovati sul Mac meritano l'archivio (azione `judge`, solo testo) |
+| `Api.gs` (azione `avviso`) | Email di avviso chiesta dal Mac, al massimo una al giorno per tipo |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
 | `../mcp/server.mjs`, `tools.mjs` | Server MCP locale (stdio) e strumenti condivisi (`npm test` in `mcp/`) |
 | `../remote/src/index.js` | Connettore MCP remoto su Cloudflare Workers con OAuth (`node test.mjs` in `remote/`) |
-| `../harvest/daily-harvest.mjs` | Raccolta notturna dal Mac: cartelle, foto, email personali, WhatsApp (`node harvest/test.mjs`) |
+| `../harvest/daily-harvest.mjs` | Raccolta notturna dal Mac: cartelle, foto, email personali, WhatsApp Web (`node harvest/test.mjs`) |
+| `../harvest/whatsapp-web.mjs` | Scarica gli allegati dalle chat personali di WhatsApp Web (profilo Chrome dedicato) |
 | `../test/run.js` | 69 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.

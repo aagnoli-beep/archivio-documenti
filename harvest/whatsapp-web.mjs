@@ -29,6 +29,21 @@ const INBOX = path.join(BASE, 'whatsapp-inbox');
 const STATO = path.join(BASE, 'whatsapp-state.json');
 const LOG = path.join(HOME, 'Library', 'Logs', 'archivio-harvest.log');
 
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CONFIG = path.join(BASE, 'config.json');
+
+/** Avvisa per email (una volta al giorno) passando dal backend: sul Mac non serve nessuna chiave. */
+async function avvisaPerEmail(chiave, oggetto, testo) {
+  try {
+    const cfg = JSON.parse(fsSync.readFileSync(CONFIG, 'utf8'));
+    if (!cfg.apiUrl || !cfg.secret) return;
+    const { callBackend } = await import(path.join(REPO, 'mcp', 'tools.mjs'));
+    await callBackend(cfg.apiUrl, cfg.secret, 'avviso', { chiave, oggetto, testo }, { retries: 2 });
+  } catch (e) {
+    await log('AVVISO: non sono riuscito a mandare l\'email (' + String(e.message).slice(0, 60) + ')');
+  }
+}
+
 const args = process.argv.slice(2);
 const LOGIN = args.includes('--login');
 const HEADED = args.includes('--headed') || LOGIN;
@@ -78,6 +93,12 @@ async function main() {
 
     if (!collegato) {
       await log('SESSIONE DA COLLEGARE: apri il QR con "node harvest/whatsapp-web.mjs --login" e inquadralo col telefono personale');
+      await avvisaPerEmail('whatsapp', 'WhatsApp Web da ricollegare',
+        'La raccolta notturna non riesce piu a leggere WhatsApp Web: la sessione e scaduta.\n\n' +
+        'Per rimetterla a posto, sul Mac apri il Terminale ed esegui:\n' +
+        '  node "' + path.join(REPO, 'harvest', 'whatsapp-web.mjs') + '" --login\n' +
+        'Si apre una finestra con il codice QR: inquadralo con WhatsApp del telefono personale.\n' +
+        'Tutto il resto della raccolta continua a funzionare lo stesso.');
       process.exitCode = 2;
       return;
     }

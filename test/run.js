@@ -143,6 +143,21 @@ t('valutaDocumenti senza documenti non chiama Claude', () => {
 });
 G.__httpHandler = () => claudeOk(bolletta);
 
+console.log('4e. Avviso dal Mac');
+G.__mail.length = 0;
+delete G.__props['ALERT_SENT_mac_whatsapp'];
+const av1 = dispatch_('avviso', { canEdit: true, email: 'andrea@example.com' }, { chiave: 'whatsapp', oggetto: 'WhatsApp da ricollegare', testo: 'La sessione e scaduta' }, getConfig());
+const av2 = dispatch_('avviso', { canEdit: true, email: 'andrea@example.com' }, { chiave: 'whatsapp', oggetto: 'WhatsApp da ricollegare', testo: 'La sessione e scaduta' }, getConfig());
+t('l\'azione avviso manda una email sola al giorno', () => {
+  assert.strictEqual(av1.inviato, true);
+  assert.strictEqual(av2.inviato, false);
+  assert.strictEqual(G.__mail.length, 1);
+  assert.ok(/WhatsApp da ricollegare/.test(G.__mail[0].subject));
+});
+t('l\'azione avviso e vietata a chi non puo modificare', () => {
+  assert.throws(() => dispatch_('avviso', { canEdit: false }, { chiave: 'x' }, getConfig()), /permessi/);
+});
+
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };
 G.__httpHandler = () => claudeOk(referto);
