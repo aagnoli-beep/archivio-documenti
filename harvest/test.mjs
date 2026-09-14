@@ -105,7 +105,18 @@ t('non ricarica quello che ha gia visto', () => assert.strictEqual(richieste.fil
 t('non richiede il giudizio dei file gia scartati', () => assert.strictEqual(richieste.filter((r) => r.action === 'judge').length, 0));
 t('lo dice nel registro', () => assert.ok(/FINE: 0 documenti/.test(out2), out2.slice(-200)));
 
-console.log('4. Limite giornaliero');
+console.log('4. Doppioni nello stesso giro');
+richieste.length = 0;
+const stessoTesto = pdfConTesto('Referto analisi del sangue di Andrea Agnoli copia unica');
+scrivi('Desktop/copia-a.pdf', stessoTesto);
+scrivi('Downloads/copia-b.pdf', stessoTesto);
+const out4 = await esegui();
+t('lo stesso contenuto viene caricato una volta sola', () => {
+  const nomi = richieste.filter((r) => r.action === 'upload').map((r) => r.name);
+  assert.strictEqual(nomi.length, 1, 'caricati: ' + nomi.join(','));
+});
+
+console.log('5. Limite giornaliero');
 richieste.length = 0;
 for (let i = 0; i < 4; i++) scrivi(`Desktop/referto-nuovo-${i}.pdf`, pdfConTesto(`Referto analisi del sangue di Andrea Agnoli numero ${i}`));
 const out3 = await esegui(['--max', '2']);

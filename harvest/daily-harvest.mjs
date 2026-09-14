@@ -191,13 +191,26 @@ async function main() {
   }
   await log(`giro: ${candidati.length} file modificati negli ultimi ${GIORNI} giorni da ${sorgenti.length} sorgenti`);
 
+  // WhatsApp salva anche le miniature: dello stesso allegato tengo solo il file più grande.
+  const perWhatsApp = new Map();
+  for (const c of candidati.filter((x) => x.origine === 'WhatsApp')) {
+    const base = c.nome.slice(0, 36);
+    const tenuto = perWhatsApp.get(base);
+    if (!tenuto || c.size > tenuto.size) perWhatsApp.set(base, c);
+  }
+  const scartiWhatsApp = new Set(candidati.filter((c) => c.origine === 'WhatsApp' && perWhatsApp.get(c.nome.slice(0, 36)) !== c));
+  if (scartiWhatsApp.size) await log(`miniature di WhatsApp saltate: ${scartiWhatsApp.size}`);
+
   // 2) testo + primo filtro locale
   const daValutare = [];
   let gia = 0, scartati = 0;
+  const vistiInQuestoGiro = new Set();
   for (const c of candidati) {
+    if (scartiWhatsApp.has(c)) continue;
     let firma;
     try { firma = await md5(c.path); } catch { continue; }
-    if (stato.visti[firma]) { gia++; continue; }
+    if (stato.visti[firma] || vistiInQuestoGiro.has(firma)) { gia++; continue; }
+    vistiInQuestoGiro.add(firma);
     c.md5 = firma;
     const testo = (await estraiTesto(c.path, c.ext)).replace(/\s+/g, ' ').trim();
     if (!forsePersonale(c.nome, testo, famiglia)) { stato.visti[firma] = { quando: new Date().toISOString(), esito: 'scartato-subito' }; scartati++; continue; }
