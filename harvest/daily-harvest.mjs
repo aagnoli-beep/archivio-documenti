@@ -163,8 +163,9 @@ async function main() {
   for (const d of (h.cartelle || ['Desktop', 'Downloads', 'Documents']).map((x) => path.join(HOME, x))) sorgenti.push({ dir: d, origine: 'cartella' });
   sorgenti.push({ dir: path.join(HOME, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'), origine: 'iCloud Drive' });
   sorgenti.push({ dir: path.join(HOME, 'Library', 'Mobile Documents', '3L68KQB4HG~com~readdle~Scanner'), origine: 'scanner del telefono' });
-  for (const p of ['net.whatsapp.WhatsApp', 'desktop.WhatsApp']) sorgenti.push({ dir: path.join(HOME, 'Library', 'Containers', p, 'Data'), origine: 'WhatsApp', profondita: 8 });
-  sorgenti.push({ dir: path.join(HOME, 'Library', 'Group Containers', '57T9237FN3~net~whatsapp~WhatsApp'), origine: 'WhatsApp' });
+  // L'app WhatsApp installata sul Mac è quella Business, cioè di lavoro: non va guardata.
+  // I documenti personali arrivano da WhatsApp Web, raccolti in questa cartella da harvest/whatsapp-web.mjs.
+  sorgenti.push({ dir: path.join(HOME, '.config', 'archivio-documenti', 'whatsapp-inbox'), origine: 'WhatsApp Web' });
   for (const d of await cartelleMailPersonali(indirizziPersonali)) sorgenti.push({ dir: d, origine: 'email personale', profondita: 12 });
   let libFoto = [];
   try { libFoto = (await fs.readdir(path.join(HOME, 'Pictures'))).filter((x) => x.endsWith('.photoslibrary')); } catch { /* niente Foto */ }
@@ -193,12 +194,12 @@ async function main() {
 
   // WhatsApp salva anche le miniature: dello stesso allegato tengo solo il file più grande.
   const perWhatsApp = new Map();
-  for (const c of candidati.filter((x) => x.origine === 'WhatsApp')) {
+  for (const c of candidati.filter((x) => x.origine === 'WhatsApp Web')) {
     const base = c.nome.slice(0, 36);
     const tenuto = perWhatsApp.get(base);
     if (!tenuto || c.size > tenuto.size) perWhatsApp.set(base, c);
   }
-  const scartiWhatsApp = new Set(candidati.filter((c) => c.origine === 'WhatsApp' && perWhatsApp.get(c.nome.slice(0, 36)) !== c));
+  const scartiWhatsApp = new Set(candidati.filter((c) => c.origine === 'WhatsApp Web' && perWhatsApp.get(c.nome.slice(0, 36)) !== c));
   if (scartiWhatsApp.size) await log(`miniature di WhatsApp saltate: ${scartiWhatsApp.size}`);
 
   // 2) testo + primo filtro locale

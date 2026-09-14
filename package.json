@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2"
+  },
+  "dependencies": {
+    "playwright-core": "^1.63.0"
   }
 }
