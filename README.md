@@ -166,6 +166,31 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 4. Dal telefono puoi anche fotografare un documento e caricarlo dal sito (bottone *+*): entra nella stessa coda dello scanner.
 5. Nella scheda **Chiedi** fai domande in italiano ("quando scade l'assicurazione?"): l'assistente risponde usando le schede dei documenti e ti mostra quelli citati.
 
+## Raccolta automatica dal Mac (ogni notte)
+`harvest/daily-harvest.mjs` gira alle 3:20 e cerca i documenti di famiglia arrivati nei giorni precedenti:
+- cartelle personali: Scrivania, Download, Documenti, iCloud Drive e la cartella dello scanner del telefono;
+- **foto**: la libreria Foto del Mac (una foto di un documento viene letta con l'OCR);
+- **email personali**: gli allegati delle caselle configurate in `postaPersonale`; le caselle di lavoro vengono riconosciute e saltate;
+- **WhatsApp Desktop**: i file ricevuti, quando l'app è installata sul Mac.
+
+Di ogni file nuovo estrae il testo (`pdftotext`, e `tesseract` per scansioni e foto), scarta il rumore in locale e manda **solo il testo** al backend, che con l'azione `judge` chiede a Claude se è un documento di famiglia. Carica in `00_Inbox` solo quelli approvati: poi segue la pipeline di sempre. Nessun file viene spostato o cancellato dal Mac, e la chiave API resta nelle Script Properties.
+
+Installazione: `bash harvest/install.sh` (per toglierla: `bash harvest/install.sh --uninstall`).
+Prova senza caricare niente: `node harvest/daily-harvest.mjs --dry-run --days 7 --verbose`.
+Registro: `~/Library/Logs/archivio-harvest.log`. Stato: `~/.config/archivio-documenti/harvest-state.json`.
+
+Impostazioni nel file `~/.config/archivio-documenti/config.json`, sezione `harvest`:
+
+| Chiave | Significato |
+|---|---|
+| `giorni` | quanti giorni indietro guardare a ogni giro (3) |
+| `massimoAlGiorno` | quanti documenti al massimo caricare in un giro (25): tiene sotto controllo il costo |
+| `cartelle` | cartelle della home da esaminare |
+| `famiglia` | cognomi e nomi che fanno scattare l'attenzione |
+| `postaPersonale` | indirizzi che identificano le caselle personali in Mail |
+
+Nel foglio `Config` la riga `JUDGE_MODEL` (`claude-sonnet-5`) è il modello che fa la selezione: legge solo testo, quindi costa una frazione della classificazione vera e propria.
+
 ## Manutenzione e problemi
 - **Foglio `Log`**: ogni classificazione, avviso ed errore, con data e nome file.
 - **Email "Classificazione ferma"**: controlla chiave e credito su console.anthropic.com; i file aspettano in `00_Inbox`.
@@ -194,10 +219,12 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 | `Setup.gs` | `setupProject()` e `installTriggers()` |
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
+| `Judge.gs` | Decide quali documenti trovati sul Mac meritano l'archivio (azione `judge`, solo testo) |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
 | `../mcp/server.mjs`, `tools.mjs` | Server MCP locale (stdio) e strumenti condivisi (`npm test` in `mcp/`) |
 | `../remote/src/index.js` | Connettore MCP remoto su Cloudflare Workers con OAuth (`node test.mjs` in `remote/`) |
-| `../test/run.js` | 66 scenari della pipeline in un Apps Script simulato: `npm test` |
+| `../harvest/daily-harvest.mjs` | Raccolta notturna dal Mac: cartelle, foto, email personali, WhatsApp (`node harvest/test.mjs`) |
+| `../test/run.js` | 69 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
