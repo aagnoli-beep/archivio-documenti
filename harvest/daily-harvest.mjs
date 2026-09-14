@@ -269,6 +269,11 @@ async function main() {
     await fs.mkdir(path.dirname(STATE), { recursive: true });
     await fs.writeFile(STATE, JSON.stringify(stato));
   }
+  // Battito: dice al backend che il giro è arrivato in fondo. Se manca per giorni, l'archivio avvisa
+  // per email (Mac spento o lavoro automatico fermo).
+  try {
+    await api('heartbeat', { nome: 'raccolta', dettaglio: `${caricati} caricati, ${daValutare.length} valutati, ${candidati.length} file guardati` });
+  } catch (e) { await log(`AVVISO: battito non registrato (${e.message})`); }
   await log(`FINE: ${caricati} documenti mandati all'archivio`);
   return 0;
 }

@@ -133,6 +133,11 @@ function dispatch_(action, user, body, cfg) {
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per mandare avvisi');
       return { inviato: sendAlertOnce('mac_' + String(body.chiave || 'generico').replace(/[^a-z0-9_]/gi, '').substring(0, 30),
         String(body.oggetto || 'Avviso dal Mac').substring(0, 120), String(body.testo || '').substring(0, 3000)) };
+    case 'heartbeat':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
+      return registraBattito(String(body.nome || 'raccolta'), body.dettaglio);
+    case 'salute':
+      return { problemi: controllaSalute() };
     case 'log':
       return getLogRows_(parseInt(body.limit, 10) || 100);
     default:

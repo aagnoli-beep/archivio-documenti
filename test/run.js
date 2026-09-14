@@ -158,6 +158,46 @@ t('l\'azione avviso e vietata a chi non puo modificare', () => {
   assert.throws(() => dispatch_('avviso', { canEdit: false }, { chiave: 'x' }, getConfig()), /permessi/);
 });
 
+console.log('4f. Controllo di salute');
+G.__mail.length = 0;
+delete G.__props['ALERT_SENT_salute'];
+delete G.__props.API_STANDBY_UNTIL;
+delete G.__props.HEARTBEAT_raccolta;
+t('archivio in ordine -> nessun problema e nessuna email', () => {
+  assert.deepStrictEqual(controllaSalute(), []);
+  assert.strictEqual(avvisaSeQualcosaNonVa(), false);
+  assert.strictEqual(G.__mail.length, 0);
+});
+registraBattito('raccolta', 'prova');
+t('battito appena registrato -> tutto a posto', () => assert.deepStrictEqual(controllaSalute(), []));
+G.__props.HEARTBEAT_raccolta = JSON.stringify({ quando: new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString() });
+t('Mac zitto da giorni -> lo segnala', () => {
+  const p = controllaSalute();
+  assert.strictEqual(p.length, 1);
+  assert.ok(/non da notizie da 6 giorni|non dà notizie da 6 giorni/.test(p[0]), p[0]);
+});
+const fermo = G.__mkfile(inbox, 'fermo-da-un-giorno.pdf', pdfBytes, 'application/pdf', 26 * 3600 * 1000);
+t('documenti fermi in Inbox -> lo segnala', () => {
+  const p = controllaSalute();
+  assert.ok(p.some((x) => /fermi in 00_Inbox/.test(x)), JSON.stringify(p));
+});
+G.__props.API_STANDBY_UNTIL = String(Date.now() + 3600 * 1000);
+t('standby per il credito -> lo segnala e non accusa gli attivatori', () => {
+  const p = controllaSalute();
+  assert.ok(p.some((x) => /standby/.test(x)), JSON.stringify(p));
+  assert.ok(!p.some((x) => /attivatori/.test(x)), 'non deve incolpare i trigger mentre e in standby');
+});
+t('manda una sola email al giorno con tutti i problemi', () => {
+  assert.strictEqual(avvisaSeQualcosaNonVa(), true);
+  assert.strictEqual(avvisaSeQualcosaNonVa(), false);
+  assert.strictEqual(G.__mail.length, 1);
+  assert.ok(/si e fermato|si è fermato/.test(G.__mail[0].subject), G.__mail[0].subject);
+});
+fermo.setTrashed ? fermo.setTrashed(true) : (fermo.parent = archive);
+delete G.__props.API_STANDBY_UNTIL;
+delete G.__props.HEARTBEAT_raccolta;
+delete G.__props['ALERT_SENT_salute'];
+
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };
 G.__httpHandler = () => claudeOk(referto);

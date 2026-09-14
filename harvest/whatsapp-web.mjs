@@ -74,7 +74,7 @@ async function main() {
     acceptDownloads: true, args: ['--disable-blink-features=AutomationControlled']
   });
   const page = ctx.pages()[0] || await ctx.newPage();
-  let salvati = 0;
+  let salvati = 0, bolleViste = 0;
   try {
     await page.goto('https://web.whatsapp.com', { waitUntil: 'domcontentloaded', timeout: 90000 });
     const collegato = await page.waitForSelector('#pane-side', { timeout: LOGIN ? 300000 : 90000 }).then(() => true).catch(() => false);
@@ -98,6 +98,17 @@ async function main() {
 
     const righe = await page.locator('#pane-side [role="row"]').all();
     await log(`chat in elenco: ${righe.length}, ne guardo al massimo ${MAX_CHAT}`);
+    if (!righe.length) {
+      // WhatsApp ha cambiato la pagina: meglio saperlo subito che scoprirlo fra sei mesi.
+      await avvisaPerEmail('whatsapp_struttura', 'WhatsApp Web non si legge piu',
+        'La raccolta notturna non riesce piu a leggere l\'elenco delle chat di WhatsApp Web:\n' +
+        'quasi sicuramente WhatsApp ha cambiato la grafica della pagina.\n\n' +
+        'Tutto il resto dell\'archivio continua a funzionare: scanner, email, cartelle, foto e iCloud.\n' +
+        'Nel frattempo, per archiviare un documento ricevuto su WhatsApp basta condividerlo per email\n' +
+        'all\'indirizzo dell\'archivio: entra nello stesso processo, senza dipendere da WhatsApp Web.');
+      process.exitCode = 3;
+      return;
+    }
 
     for (const riga of righe.slice(0, MAX_CHAT)) {
       let nomeChat = 'chat';
@@ -106,6 +117,7 @@ async function main() {
       await page.waitForTimeout(1800);
 
       const bolle = await page.locator('[data-id]').all();
+      bolleViste += bolle.length;
       for (const bolla of bolle.slice(-MAX_MESSAGGI)) {
         let id = '';
         try { id = (await bolla.getAttribute('data-id')) || ''; } catch { continue; }
@@ -167,6 +179,14 @@ async function main() {
           }
         }
       }
+    }
+    if (!bolleViste) {
+      await avvisaPerEmail('whatsapp_messaggi', 'WhatsApp Web: non riesco piu a leggere i messaggi',
+        'La raccolta apre le chat di WhatsApp Web ma non riconosce piu i messaggi: probabilmente\n' +
+        'e cambiata la struttura della pagina. Il resto dell\'archivio continua a funzionare.\n\n' +
+        'Per archiviare un documento ricevuto su WhatsApp, nel frattempo, condividilo per email\n' +
+        'all\'indirizzo dell\'archivio.');
+      await log('AVVISO: nessun messaggio riconosciuto in nessuna chat');
     }
     await fs.writeFile(STATO, JSON.stringify(stato));
 

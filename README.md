@@ -204,6 +204,22 @@ Impostazioni nel file `~/.config/archivio-documenti/config.json`, sezione `harve
 
 Nel foglio `Config` la riga `JUDGE_MODEL` (`claude-sonnet-5`) è il modello che fa la selezione: legge solo testo, quindi costa una frazione della classificazione vera e propria.
 
+## Cosa dura negli anni, e cosa no
+L'archivio è fatto per restare in piedi da solo. Le parti robuste non dipendono da nessuna grafica:
+scanner → Drive, ingresso via email, cartella iCloud, classificazione, foglio indice, Excel di backup,
+copia su iCloud. Se un domani smettesse tutto, i documenti restano comunque su Drive, su iCloud e nell'Excel.
+
+La parte fragile è una sola: la lettura di **WhatsApp Web**, che funziona guardando la pagina e quindi
+prima o poi si romperà, quando WhatsApp cambierà grafica. Per questo non si rompe in silenzio:
+- se non riconosce più l'elenco delle chat o i messaggi, manda un'**email di avviso** e prosegue con tutto il resto;
+- l'alternativa che dura per sempre è condividere il documento da WhatsApp per **email** all'indirizzo
+  dell'archivio: entra nella stessa coda, senza dipendere da nessuna pagina web.
+
+**Controllo di salute** (`src/Health.gs`): ogni sera, insieme al rendiconto, l'archivio verifica che non ci
+siano documenti fermi in `00_Inbox`, che la classificazione non sia in standby per il credito e che la
+raccolta notturna del Mac abbia dato notizie negli ultimi 4 giorni (lo fa con l'azione `heartbeat` a fine giro).
+Se qualcosa non va arriva **una sola email** con l'elenco dei problemi; se va tutto bene non arriva niente.
+
 ## Manutenzione e problemi
 - **Foglio `Log`**: ogni classificazione, avviso ed errore, con data e nome file.
 - **Email "Classificazione ferma"**: controlla chiave e credito su console.anthropic.com; i file aspettano in `00_Inbox`.
@@ -233,6 +249,7 @@ Nel foglio `Config` la riga `JUDGE_MODEL` (`claude-sonnet-5`) è il modello che 
 | `Api.gs` | Backend JSON del sito: verifica del token Google, indice, file, correzioni, upload |
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
 | `Judge.gs` | Decide quali documenti trovati sul Mac meritano l'archivio (azione `judge`, solo testo) |
+| `Health.gs` | Controllo di salute serale e battito della raccolta (azioni `heartbeat`, `salute`) |
 | `Api.gs` (azione `avviso`) | Email di avviso chiesta dal Mac, al massimo una al giorno per tipo |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
