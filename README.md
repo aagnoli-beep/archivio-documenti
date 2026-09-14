@@ -184,7 +184,9 @@ node harvest/whatsapp-web.mjs --login
 
 Si apre una finestra di Chrome con il codice QR: inquadralo con WhatsApp del **telefono personale** (Impostazioni → Dispositivi collegati). Il collegamento resta valido per mesi e usa un profilo Chrome tutto suo, in `~/.config/archivio-documenti/whatsapp-profile`, separato dal Chrome di tutti i giorni e da WhatsApp Business.
 
-Ogni notte il programma apre WhatsApp Web senza finestra, guarda le chat più recenti e salva gli allegati nuovi in `~/.config/archivio-documenti/whatsapp-inbox`; la raccolta li valuta come tutti gli altri. Non invia messaggi e non segna niente come letto. Se la sessione scade arriva **un'email di avviso** con il comando da rilanciare, e il resto della raccolta continua a funzionare.
+Ogni notte il programma apre WhatsApp Web senza finestra, guarda le chat più recenti e salva gli allegati **ricevuti** in `~/.config/archivio-documenti/whatsapp-inbox`; la raccolta li valuta come tutti gli altri e la cartella di transito si ripulisce da sola dopo due settimane. Non invia messaggi e non scrive nelle chat. Se la sessione scade arriva **un'email di avviso** con il comando da rilanciare, e il resto della raccolta continua a funzionare.
+
+Nota tecnica: la libreria `whatsapp-web.js` non regge la versione attuale di WhatsApp Web (legge i contatti ma non le chat), quindi la lettura avviene con Playwright sui selettori della pagina: elenco chat come righe di `#pane-side`, finestra "Novità" chiusa se compare, messaggi distinti in ricevuti e inviati dalla codina della bolla (`tail-in` / `tail-out`) o, in mancanza, dalla posizione. Se un giorno WhatsApp cambia grafica, il registro lo dice subito (`chat in elenco: 0`) e basta ritoccare quei selettori.
 
 Installazione: `bash harvest/install.sh` (per toglierla: `bash harvest/install.sh --uninstall`).
 Prova senza caricare niente: `node harvest/daily-harvest.mjs --dry-run --days 7 --verbose`.
