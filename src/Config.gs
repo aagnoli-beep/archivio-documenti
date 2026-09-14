@@ -81,7 +81,8 @@ var DEFAULT_CONFIG = [
   ['DIGEST_REPLY_TO', '', 'Indirizzo a cui vanno le risposte al rendiconto (il mittente resta l\'account Google dello script)'],
   ['DIGEST_SENDER_NAME', 'Archivio di casa', 'Nome del mittente mostrato nel rendiconto'],
   ['MAIL_INTAKE_ADDRESS', '', 'Indirizzo a cui inoltrare email e foto da archiviare (vuoto = <account>+archivio@gmail.com)'],
-  ['MAIL_SENDERS', '', 'Mittenti ammessi per l\'ingresso via email (vuoto = ALLOWED_EMAILS + DIGEST_EMAILS + proprietario)']
+  ['MAIL_SENDERS', '', 'Mittenti ammessi per l\'ingresso via email (vuoto = ALLOWED_EMAILS + DIGEST_EMAILS + proprietario)'],
+  ['JUDGE_MODEL', 'claude-sonnet-5', 'Modello usato per decidere quali documenti trovati sul Mac meritano l\'archivio (costa poco: legge solo testo)']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -183,6 +184,7 @@ function getConfig() {
       var all = splitEmails_(kv.ALLOWED_EMAILS).concat(splitEmails_(kv.DIGEST_EMAILS), [String(Session.getEffectiveUser().getEmail() || '').toLowerCase()]);
       return all.filter(function (e, i) { return e && all.indexOf(e) === i; });
     })(),
+    judgeModel: String(kv.JUDGE_MODEL || 'claude-sonnet-5').trim(),
     categories: categories,
     categoryNames: Object.keys(categories)
   };

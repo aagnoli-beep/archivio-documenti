@@ -16,7 +16,7 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 20); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 21); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
 t('quattro trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'processMailIntake', 'sendDailyDigest', 'exportIndexXlsx']); });
 t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 4); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
@@ -112,6 +112,34 @@ t('PDF protetto da password -> riprova con il testo e classifica', () => {
   assert.ok(bodies.some(b => b.messages[0].content[0].type === 'text'), 'nessun secondo tentativo con il testo');
   assert.strictEqual(protetto.parent, archive);
   assert.strictEqual(getIndexRow(protetto.getId()).stato, 'Auto');
+});
+G.__httpHandler = () => claudeOk(bolletta);
+
+console.log('4d. Valutazione dei documenti trovati sul Mac');
+G.__http.length = 0;
+G.__httpHandler = () => ({ code: 200, body: { model: 'claude-sonnet-5', content: [{ type: 'text', text: JSON.stringify({ esiti: [
+  { id: 'a1', archiviare: true, categoria: 'Salute', tipo: 'Referto', motivo: 'referto di famiglia' },
+  { id: 'a2', archiviare: false, categoria: '', tipo: 'Slide corso', motivo: 'materiale di studio' }
+] }) }], usage: { input_tokens: 900 } } });
+const esito = valutaDocumenti([
+  { id: 'a1', nome: 'scan1.pdf', testo: 'Referto analisi Andrea Agnoli', origine: 'cartella' },
+  { id: 'a2', nome: 'lezione.pdf', testo: 'Slide corso di finanza', origine: 'cartella' }
+], getConfig());
+t('valutaDocumenti restituisce un esito per documento', () => {
+  assert.strictEqual(esito.valutati, 2);
+  assert.strictEqual(esito.esiti[0].archiviare, true);
+  assert.strictEqual(esito.esiti[1].archiviare, false);
+});
+t('valutaDocumenti usa il modello economico e manda solo testo', () => {
+  const body = JSON.parse(G.__http[G.__http.length - 1].opts.payload);
+  assert.strictEqual(body.model, 'claude-sonnet-5');
+  assert.ok(body.messages[0].content.indexOf('Referto analisi Andrea Agnoli') > 0);
+  assert.ok(body.system.indexOf('archivio DI FAMIGLIA') > 0);
+});
+t('valutaDocumenti senza documenti non chiama Claude', () => {
+  const prima = G.__http.length;
+  assert.deepStrictEqual(valutaDocumenti([], getConfig()), { esiti: [], valutati: 0 });
+  assert.strictEqual(G.__http.length, prima);
 });
 G.__httpHandler = () => claudeOk(bolletta);
 

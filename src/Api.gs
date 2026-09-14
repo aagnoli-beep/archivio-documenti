@@ -126,6 +126,9 @@ function dispatch_(action, user, body, cfg) {
     case 'mail_import':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per importare');
       return importMailAttachments(body.items || []);
+    case 'judge':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi per la valutazione');
+      return valutaDocumenti(body.items || [], cfg);
     case 'log':
       return getLogRows_(parseInt(body.limit, 10) || 100);
     default:
