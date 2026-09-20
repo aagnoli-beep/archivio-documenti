@@ -176,17 +176,28 @@ Ogni sera (ora `DIGEST_HOUR`, default 20) lo script manda ai destinatari di `DIG
 Di ogni file nuovo estrae il testo (`pdftotext`, e `tesseract` per scansioni e foto), scarta il rumore in locale e manda **solo il testo** al backend, che con l'azione `judge` chiede a Claude se è un documento di famiglia. Carica in `00_Inbox` solo quelli approvati: poi segue la pipeline di sempre. Nessun file viene spostato o cancellato dal Mac, e la chiave API resta nelle Script Properties.
 
 ### WhatsApp personale, una volta sola
-Il numero personale vive su WhatsApp Web. Per collegarlo alla raccolta:
+Il numero personale vive su WhatsApp. Il Mac si collega **come dispositivo aggiuntivo**, esattamente come
+fa WhatsApp Web, ma parlando direttamente il protocollo (libreria Baileys): non dipende dalla grafica del
+sito, quindi non si rompe quando WhatsApp cambia aspetto. Sul telefono compare in *Dispositivi collegati*
+con il nome **Archivio di casa** e si può staccare da lì in qualsiasi momento.
 
 ```bash
-node harvest/whatsapp-web.mjs --login
+node harvest/whatsapp-daemon.mjs --login            # mostra il QR (e lo salva come immagine sulla Scrivania)
+node harvest/whatsapp-daemon.mjs --pair 39XXXXXXXXXX # in alternativa, codice da digitare sul telefono
 ```
 
-Si apre una finestra di Chrome con il codice QR: inquadralo con WhatsApp del **telefono personale** (Impostazioni → Dispositivi collegati). Il collegamento resta valido per mesi e usa un profilo Chrome tutto suo, in `~/.config/archivio-documenti/whatsapp-profile`, separato dal Chrome di tutti i giorni e da WhatsApp Business.
+Nota: non è un client ufficiale, quindi l'uso è formalmente contro le condizioni di WhatsApp; per un uso
+personale in sola lettura il rischio è basso ma non nullo. L'alternativa senza rischi resta inoltrare il
+documento per email all'indirizzo dell'archivio.
 
-Ogni notte il programma apre WhatsApp Web senza finestra, guarda le chat più recenti e salva gli allegati **ricevuti** in `~/.config/archivio-documenti/whatsapp-inbox`; la raccolta li valuta come tutti gli altri e la cartella di transito si ripulisce da sola dopo due settimane. Non invia messaggi e non scrive nelle chat. Se la sessione scade arriva **un'email di avviso** con il comando da rilanciare, e il resto della raccolta continua a funzionare.
+Il servizio resta acceso in sottofondo (launchd lo riavvia da solo, anche dopo un riavvio del Mac) e
+riceve gli allegati appena arrivano; quelli arrivati a Mac spento vengono consegnati alla riconnessione.
 
-Nota tecnica: la libreria `whatsapp-web.js` non regge la versione attuale di WhatsApp Web (legge i contatti ma non le chat), quindi la lettura avviene con Playwright sui selettori della pagina: elenco chat come righe di `#pane-side`, finestra "Novità" chiusa se compare, messaggi distinti in ricevuti e inviati dalla codina della bolla (`tail-in` / `tail-out`) o, in mancanza, dalla posizione. Se un giorno WhatsApp cambia grafica, il registro lo dice subito (`chat in elenco: 0`) e basta ritoccare quei selettori.
+**Due corsie:**
+- *normale*: gli allegati delle chat finiscono in `whatsapp-inbox` e la notte passano dalla selezione come tutto il resto;
+- *diretta*: quello che mandi nel **gruppo "Documenti"** o nella **chat con te stesso** finisce in `whatsapp-diretti`
+  e viene archiviato senza passare dal giudizio, perché è una scelta esplicita. I gruppi si cambiano nella
+  configurazione, chiave `harvest.gruppiArchivio`.
 
 Installazione: `bash harvest/install.sh` (per toglierla: `bash harvest/install.sh --uninstall`).
 Prova senza caricare niente: `node harvest/daily-harvest.mjs --dry-run --days 7 --verbose`.

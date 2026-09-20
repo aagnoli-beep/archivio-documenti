@@ -116,7 +116,25 @@ t('lo stesso contenuto viene caricato una volta sola', () => {
   assert.strictEqual(nomi.length, 1, 'caricati: ' + nomi.join(','));
 });
 
-console.log('5. Limite giornaliero');
+console.log('5. Corsia diretta (gruppo Documenti / chat con se stessi)');
+richieste.length = 0;
+fs.mkdirSync(path.join(HOME, '.config/archivio-documenti/whatsapp-diretti'), { recursive: true });
+scrivi('.config/archivio-documenti/whatsapp-diretti/Documenti__2026-09-21__volantino.pdf',
+  pdfConTesto('Volantino della sagra paesana, nessun riferimento a documenti di famiglia'));
+const out5 = await esegui();
+t('quello che scegli tu viene archiviato anche se non sembra un documento di famiglia', () => {
+  const nomi = richieste.filter((r) => r.action === 'upload').map((r) => r.name);
+  assert.ok(nomi.includes('Documenti__2026-09-21__volantino.pdf'), 'caricati: ' + nomi.join(','));
+});
+t('la corsia diretta non passa dal giudice', () => {
+  const visti = richieste.filter((r) => r.action === 'judge').flatMap((r) => r.items.map((i) => i.nome));
+  assert.ok(!visti.some((n) => /volantino/.test(n)), 'ha chiesto il giudizio su un file scelto a mano');
+});
+t('una volta archiviato sparisce dalla cartella di transito', () => {
+  assert.ok(!fs.existsSync(path.join(HOME, '.config/archivio-documenti/whatsapp-diretti/Documenti__2026-09-21__volantino.pdf')));
+});
+
+console.log('6. Limite giornaliero');
 richieste.length = 0;
 for (let i = 0; i < 4; i++) scrivi(`Desktop/referto-nuovo-${i}.pdf`, pdfConTesto(`Referto analisi del sangue di Andrea Agnoli numero ${i}`));
 const out3 = await esegui(['--max', '2']);

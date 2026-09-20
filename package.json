@@ -14,6 +14,8 @@
     "@google/clasp": "^2.4.2"
   },
   "dependencies": {
-    "playwright-core": "^1.63.0"
+    "@whiskeysockets/baileys": "^6.7.18",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
   }
 }

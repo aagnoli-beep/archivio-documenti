@@ -165,7 +165,9 @@ async function main() {
   sorgenti.push({ dir: path.join(HOME, 'Library', 'Mobile Documents', '3L68KQB4HG~com~readdle~Scanner'), origine: 'scanner del telefono' });
   // L'app WhatsApp installata sul Mac è quella Business, cioè di lavoro: non va guardata.
   // I documenti personali arrivano da WhatsApp Web, raccolti in questa cartella da harvest/whatsapp-web.mjs.
-  sorgenti.push({ dir: path.join(HOME, '.config', 'archivio-documenti', 'whatsapp-inbox'), origine: 'WhatsApp Web' });
+  sorgenti.push({ dir: path.join(HOME, '.config', 'archivio-documenti', 'whatsapp-inbox'), origine: 'WhatsApp' });
+  // Corsia diretta: gruppo "Documenti" e chat con se stessi. Sono scelte esplicite, niente selezione.
+  sorgenti.push({ dir: path.join(HOME, '.config', 'archivio-documenti', 'whatsapp-diretti'), origine: 'WhatsApp (scelto da te)', diretto: true });
   for (const d of await cartelleMailPersonali(indirizziPersonali)) sorgenti.push({ dir: d, origine: 'email personale', profondita: 12 });
   let libFoto = [];
   try { libFoto = (await fs.readdir(path.join(HOME, 'Pictures'))).filter((x) => x.endsWith('.photoslibrary')); } catch { /* niente Foto */ }
@@ -185,7 +187,7 @@ async function main() {
       try { st = await fs.stat(f); } catch { continue; }
       if (st.mtimeMs < limite || st.size === 0 || st.size > MAX_BYTES) continue;
       if (ext !== '.pdf' && ext !== '.docx' && ext !== '.doc' && st.size < MIN_IMG_BYTES) continue;
-      candidati.push({ path: f, nome, ext, size: st.size, origine: s.origine });
+      candidati.push({ path: f, nome, ext, size: st.size, origine: s.origine, diretto: !!s.diretto });
       quanti++;
       if (quanti >= (h.massimoPerSorgente || 400)) break;
     }
@@ -194,16 +196,17 @@ async function main() {
 
   // WhatsApp salva anche le miniature: dello stesso allegato tengo solo il file più grande.
   const perWhatsApp = new Map();
-  for (const c of candidati.filter((x) => x.origine === 'WhatsApp Web')) {
+  for (const c of candidati.filter((x) => x.origine === 'WhatsApp')) {
     const base = c.nome.slice(0, 36);
     const tenuto = perWhatsApp.get(base);
     if (!tenuto || c.size > tenuto.size) perWhatsApp.set(base, c);
   }
-  const scartiWhatsApp = new Set(candidati.filter((c) => c.origine === 'WhatsApp Web' && perWhatsApp.get(c.nome.slice(0, 36)) !== c));
+  const scartiWhatsApp = new Set(candidati.filter((c) => c.origine === 'WhatsApp' && perWhatsApp.get(c.nome.slice(0, 36)) !== c));
   if (scartiWhatsApp.size) await log(`miniature di WhatsApp saltate: ${scartiWhatsApp.size}`);
 
   // 2) testo + primo filtro locale
   const daValutare = [];
+  const subito = [];                 // corsia diretta: non passano dal giudice
   let gia = 0, scartati = 0;
   const vistiInQuestoGiro = new Set();
   for (const c of candidati) {
@@ -213,15 +216,16 @@ async function main() {
     if (stato.visti[firma] || vistiInQuestoGiro.has(firma)) { gia++; continue; }
     vistiInQuestoGiro.add(firma);
     c.md5 = firma;
+    if (c.diretto) { c.categoria = ''; c.motivo = 'scelto da te su WhatsApp'; subito.push(c); continue; }
     const testo = (await estraiTesto(c.path, c.ext)).replace(/\s+/g, ' ').trim();
     if (!forsePersonale(c.nome, testo, famiglia)) { stato.visti[firma] = { quando: new Date().toISOString(), esito: 'scartato-subito' }; scartati++; continue; }
     c.testo = testo.slice(0, 1500);
     daValutare.push(c);
   }
-  await log(`nuovi: ${candidati.length - gia} | scartati dal filtro locale: ${scartati} | da far valutare: ${daValutare.length}`);
+  await log(`nuovi: ${candidati.length - gia} | scelti da te: ${subito.length} | scartati dal filtro locale: ${scartati} | da far valutare: ${daValutare.length}`);
 
-  // 3) valutazione dal backend, a gruppi
-  const approvati = [];
+  // 3) valutazione dal backend, a gruppi (la corsia diretta è già approvata e passa per prima)
+  const approvati = subito.slice();
   for (let i = 0; i < daValutare.length; i += 20) {
     const gruppo = daValutare.slice(i, i + 20);
     let esiti = [];
@@ -257,6 +261,8 @@ async function main() {
       const r = await api('upload', { data, name: nome, mime });
       stato.visti[c.md5] = { quando: new Date().toISOString(), esito: 'caricato', nome: r.name };
       caricati++;
+      // I file della corsia diretta sono solo di passaggio: una volta in archivio si tolgono.
+      if (c.diretto) await fs.rm(c.path, { force: true }).catch(() => {});
       await log(`CARICATO (${c.origine}) ${nome} -> ${c.categoria}: ${c.motivo}`);
     } catch (e) {
       await log(`AVVISO: "${c.nome}" non caricato (${e.message}); riprovo domani`);
