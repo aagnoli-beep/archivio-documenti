@@ -207,6 +207,22 @@ delete G.__props.HEARTBEAT_raccolta;
 delete G.__props.HEARTBEAT_whatsapp;
 delete G.__props['ALERT_SENT_salute'];
 
+console.log('4g. Indice a pagine');
+t('l\'indice si legge a pagine e dice dove continuare', () => {
+  const tutte = getAllIndexRows().length;
+  const prima = dispatch_('index', { canEdit: true, email: 'x@y.z' }, { limit: 2, offset: 0 }, getConfig());
+  assert.strictEqual(prima.docs.length, Math.min(2, tutte));
+  assert.strictEqual(prima.total, tutte);
+  if (tutte > 2) {
+    assert.strictEqual(prima.next, 2);
+    const seconda = dispatch_('index', { canEdit: true, email: 'x@y.z' }, { limit: 2, offset: prima.next }, getConfig());
+    assert.strictEqual(seconda.offset, 2);
+    assert.notStrictEqual(seconda.docs[0].id, prima.docs[0].id);
+  }
+  const ultima = dispatch_('index', { canEdit: true, email: 'x@y.z' }, { limit: 500, offset: 0 }, getConfig());
+  assert.strictEqual(ultima.next, null, 'con tutte le righe non deve chiedere altre pagine');
+});
+
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };
 G.__httpHandler = () => claudeOk(referto);

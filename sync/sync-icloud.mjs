@@ -12,12 +12,14 @@
  * Non tocca mai Google Drive. Log in ~/Library/Logs/archivio-sync.log
  */
 import fs from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { downloadFile, callBackend } from '../mcp/tools.mjs';
+import { downloadFile, callBackend, fetchIndex } from '../mcp/tools.mjs';
 const execFileP = promisify(execFile);
 
 const HOME = os.homedir();
@@ -69,7 +71,7 @@ async function main() {
 
   const api = (action, payload = {}) => callBackend(cfg.apiUrl, cfg.secret, action, payload);
 
-  const index = await api('index');
+  const index = await fetchIndex(api);
   const wanted = new Map();
   for (const d of index.docs) if (d.id && d.nomeFile) wanted.set(d.nomeFile, d);
 
@@ -127,11 +129,25 @@ async function main() {
     }
   }
 
-  // 2) Documenti dell'indice mancanti in iCloud: scaricati dal backend.
-  let added = 0, failed = 0;
+  // 2) Documenti dell'indice mancanti in iCloud.
+  // Prima si prova la cartella locale di Google Drive per desktop: è la stessa roba, ma la copia è
+  // immediata e non passa dai limiti di risposta del web app (che Google stringe di tanto in tanto).
+  const gdArchive = await findDriveDesktopArchive();
+  let added = 0, failed = 0, daDrive = 0;
   for (const [name, d] of wanted) {
     const dest = path.join(archiveDir, name);
     try { await fs.access(dest); written.add(name); continue; } catch {}
+    if (gdArchive) {
+      try {
+        await pipeline(createReadStream(path.join(gdArchive, name), { highWaterMark: 1 << 20 }), createWriteStream(dest + '.part'));
+        if ((await fs.stat(dest + '.part')).size > 0) {
+          await fs.rename(dest + '.part', dest);
+          written.add(name); added++; daDrive++;
+          continue;
+        }
+        await fs.rm(dest + '.part', { force: true }).catch(() => {});
+      } catch { await fs.rm(dest + '.part', { force: true }).catch(() => {}); }
+    }
     try {
       const f = await downloadFile(api, d.id);
       await fs.writeFile(dest + '.part', f.bytes);
@@ -139,22 +155,6 @@ async function main() {
       written.add(name);
       added++;
     } catch (e) {
-      // Oltre 60 MB il backend non può restituire il file: lo prendo dalla copia locale di Google Drive per desktop.
-      const troppoGrande = /troppo grande|superano il massimo|exceeds the maximum/i.test(String(e.message));
-      const gdArchive = troppoGrande ? await findDriveDesktopArchive() : null;
-      if (gdArchive) {
-        try {
-          await fs.copyFile(path.join(gdArchive, name), dest + '.part');
-          await fs.rename(dest + '.part', dest);
-          written.add(name);
-          added++;
-          await log(`COPIATO da Google Drive per desktop (file grande): ${name}`);
-          continue;
-        } catch (e2) {
-          await fs.rm(dest + '.part', { force: true }).catch(() => {});
-          e = new Error(e.message + '; copia da Google Drive per desktop fallita: ' + e2.message);
-        }
-      }
       failed++;
       await log(`AVVISO: non scaricato "${name}": ${e.message}`);
     }
@@ -172,7 +172,7 @@ async function main() {
   } catch (e) { await log('AVVISO: Indice.xlsx non aggiornato: ' + e.message); }
 
   const now = (await fs.readdir(archiveDir)).filter((n) => !n.startsWith('.')).length;
-  await log(`OK: ${now} documenti in iCloud (indice ${wanted.size}; +${added} -${removed}${failed ? ' non scaricati ' + failed : ''}${sent ? '; inviati a Drive: ' + sent : ''}${sendFailed ? '; non inviati: ' + sendFailed : ''})`);
+  await log(`OK: ${now} documenti in iCloud (indice ${wanted.size}; +${added}${daDrive ? ' (' + daDrive + ' da Google Drive)' : ''} -${removed}${failed ? ' non scaricati ' + failed : ''}${sent ? '; inviati a Drive: ' + sent : ''}${sendFailed ? '; non inviati: ' + sendFailed : ''})`);
   return 0;
 }
 

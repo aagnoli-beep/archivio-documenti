@@ -11,6 +11,24 @@
   function fmtDate(d) { var m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + '/' + m[2] + '/' + m[1] : String(d || ''); }
 
   // ---------- API ----------
+  // L'indice arriva a pagine: le risposte grandi del web app vengono rifiutate da Google.
+  function leggiIndiceAPagine() {
+    var limite = 150, docs = [], meta = null;
+    function pagina(offset) {
+      return api('index', { offset: offset, limit: limite }).then(function (d) {
+        if (!meta) meta = d;
+        docs = docs.concat(d.docs || []);
+        if (d.next) return pagina(d.next);
+        var out = Object.assign({}, meta, { docs: docs });
+        return out;
+      }).catch(function (e) {
+        if (limite > 20 && /non valida|404/i.test(String(e && e.message))) { limite = Math.floor(limite / 2); return pagina(offset); }
+        throw e;
+      });
+    }
+    return pagina(0);
+  }
+
   function api(action, payload) {
     var body = Object.assign({ action: action, token: state.token }, payload || {});
     return fetch(CFG.API_URL, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' })
@@ -53,7 +71,7 @@
     enter();
   }
   function enter() {
-    api('index').then(function (data) { onData(data); showApp(); })
+    leggiIndiceAPagine().then(function (data) { onData(data); showApp(); })
       .catch(function (err) {
         if (err.code === 'forbidden') logout(err.message);
         else if (err.code !== 'login_required') { $('loginMsg').textContent = 'Errore: ' + err.message; }

@@ -63,15 +63,50 @@ export async function callBackend(apiUrl, secret, action, payload = {}, opts = {
  * Scarica un documento dal backend a pezzi da 3 MB, con tentativi ripetuti per ogni pezzo:
  * Google ogni tanto risponde con una pagina di errore alle risposte grandi, e riprovare basta.
  */
+/**
+ * Legge tutto l'indice una pagina per volta. Se Google rifiuta la risposta perché troppo grande,
+ * la pagina si dimezza da sola: così regge anche se domani la soglia cambia ancora.
+ */
+export async function fetchIndex(api, opts = {}) {
+  let limite = opts.limit || 150;
+  const minimo = 20;
+  const docs = [];
+  let offset = 0, meta = null;
+  for (let giri = 0; giri < 200; giri++) {
+    let pagina;
+    try {
+      pagina = await api('index', { offset, limit: limite });
+    } catch (e) {
+      if (/risposta non valida dal backend/i.test(String(e && e.message)) && limite > minimo) { limite = Math.max(minimo, Math.floor(limite / 2)); continue; }
+      throw e;
+    }
+    if (!meta) meta = pagina;
+    docs.push(...(pagina.docs || []));
+    if (!pagina.next) break;
+    offset = pagina.next;
+  }
+  return Object.assign({}, meta, { docs, total: (meta && meta.total) || docs.length });
+}
+
 export async function downloadFile(api, id, opts = {}) {
-  const chunk = opts.chunk || 3 * 1024 * 1024;
+  // Google rifiuta le risposte grandi del web app, e la soglia cambia nel tempo (a settembre 2026 è
+  // scesa da qualche MB a circa 256 KB). Invece di fissare un valore, si parte da un pezzo prudente e
+  // lo si dimezza finché passa: così continua a funzionare anche se domani la soglia cambia ancora.
+  let chunk = opts.chunk || 256 * 1024;
+  const minimo = 32 * 1024;
   const retries = opts.retries ?? 3;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rispostaTroppoGrande = (e) => /risposta non valida dal backend/i.test(String(e && e.message));
   const getPart = async (offset) => {
     let lastErr;
     for (let i = 0; i < retries; i++) {
       try { return await api('file', { id, offset, length: chunk }); }
-      catch (e) { lastErr = e; if (i < retries - 1) await wait(2000 * (i + 1)); }
+      catch (e) {
+        lastErr = e;
+        if (e && e.permanent) throw e;                       // "troppo grande", "non trovato": inutile insistere
+        if (rispostaTroppoGrande(e) && chunk > minimo) { chunk = Math.max(minimo, Math.floor(chunk / 2)); continue; }
+        if (i < retries - 1) await wait(2000 * (i + 1));
+      }
     }
     throw lastErr;
   };
@@ -128,7 +163,7 @@ export function registerTools(server, api, opts = {}) {
   let cache = { at: 0, data: null };
   const getIndex = async (force = false) => {
     if (!force && cache.data && Date.now() - cache.at < ttl) return cache.data;
-    const data = await api('index');
+    const data = await fetchIndex(api);
     cache = { at: Date.now(), data };
     return data;
   };

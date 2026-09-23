@@ -11,7 +11,7 @@
 
 var TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token=';
 var FILE_MAX_BYTES = 45 * 1024 * 1024;   // oltre questa soglia Apps Script non riesce a leggere il file in memoria: meglio dirlo al client, che lo prende dalla cartella di Google Drive
-var FILE_CHUNK_MAX = 6 * 1024 * 1024;   // per risposta: base64 di 6 MB resta sotto i limiti di Apps Script
+var FILE_CHUNK_MAX = 512 * 1024;        // Google rifiuta le risposte grandi del web app: meglio pezzi piccoli
 
 function doGet(e) { return handleRequest_(e, 'GET'); }
 function doPost(e) { return handleRequest_(e, 'POST'); }
@@ -102,10 +102,19 @@ function dispatch_(action, user, body, cfg) {
   switch (action) {
     case 'me':
       return { ok: true };
-    case 'index':
-      return { docs: getAllIndexRows(), categories: cfg.categories, family: cfg.family,
+    case 'index': {
+      // A pagine: Google rifiuta le risposte grandi del web app, e con oltre mille documenti
+      // l'indice intero non passa più. Il client chiede una pagina per volta.
+      var tutte = getAllIndexRows();
+      var da = Math.max(0, parseInt(body.offset, 10) || 0);
+      var quante = Math.min(400, Math.max(1, parseInt(body.limit, 10) || 150));
+      var fetta = tutte.slice(da, da + quante);
+      return { docs: fetta, total: tutte.length, offset: da,
+        next: (da + fetta.length < tutte.length) ? da + fetta.length : null,
+        categories: cfg.categories, family: cfg.family,
         archiveUrl: 'https://drive.google.com/drive/folders/' + getProp_(PROP.ARCHIVE_FOLDER_ID, true),
         sheetUrl: getSpreadsheet_().getUrl() };
+    }
     case 'doc':
       return getIndexRow(String(body.id || ''));
     case 'file':
