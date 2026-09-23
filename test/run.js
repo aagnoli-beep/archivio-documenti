@@ -171,10 +171,18 @@ t('archivio in ordine -> nessun problema e nessuna email', () => {
 registraBattito('raccolta', 'prova');
 t('battito appena registrato -> tutto a posto', () => assert.deepStrictEqual(controllaSalute(), []));
 G.__props.HEARTBEAT_raccolta = JSON.stringify({ quando: new Date(Date.now() - 6 * 24 * 3600 * 1000).toISOString() });
+G.__props.HEARTBEAT_whatsapp = JSON.stringify({ quando: new Date().toISOString() });
 t('Mac zitto da giorni -> lo segnala', () => {
   const p = controllaSalute();
   assert.strictEqual(p.length, 1);
   assert.ok(/non da notizie da 6 giorni|non dà notizie da 6 giorni/.test(p[0]), p[0]);
+});
+t('WhatsApp che batte da poco non viene segnalato', () => {
+  assert.ok(!controllaSalute().some((x) => /WhatsApp/.test(x)), 'non doveva segnalare WhatsApp');
+});
+G.__props.HEARTBEAT_whatsapp = JSON.stringify({ quando: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() });
+t('servizio WhatsApp fermo da 3 giorni -> lo segnala', () => {
+  assert.ok(controllaSalute().some((x) => /servizio WhatsApp/i.test(x)), JSON.stringify(controllaSalute()));
 });
 const fermo = G.__mkfile(inbox, 'fermo-da-un-giorno.pdf', pdfBytes, 'application/pdf', 26 * 3600 * 1000);
 t('documenti fermi in Inbox -> lo segnala', () => {
@@ -196,6 +204,7 @@ t('manda una sola email al giorno con tutti i problemi', () => {
 fermo.setTrashed ? fermo.setTrashed(true) : (fermo.parent = archive);
 delete G.__props.API_STANDBY_UNTIL;
 delete G.__props.HEARTBEAT_raccolta;
+delete G.__props.HEARTBEAT_whatsapp;
 delete G.__props['ALERT_SENT_salute'];
 
 console.log('5. PDF grande e immagini');

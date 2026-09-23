@@ -101,7 +101,7 @@ G.SpreadsheetApp = {
 G.PropertiesService = { getScriptProperties: () => ({
   getProperty: (k) => (k in G.__props ? G.__props[k] : null),
   setProperty: (k, v) => { G.__props[k] = String(v); }, setProperties: (o) => { Object.keys(o).forEach(k => G.__props[k] = String(o[k])); },
-  deleteProperty: (k) => { delete G.__props[k]; }
+  deleteProperty: (k) => { delete G.__props[k]; }, getProperties: () => Object.assign({}, G.__props)
 }) };
 G.MimeType = { PDF: 'application/pdf', JPEG: 'image/jpeg', PNG: 'image/png', GOOGLE_SHEETS: 'application/vnd.google-apps.spreadsheet' };
 G.Utilities = {

@@ -9,7 +9,11 @@
  */
 
 var SALUTE_INBOX_ORE = 12;          // file fermi in Inbox da più di così = qualcosa non gira
-var SALUTE_BATTITO_GIORNI = 4;      // giorni senza notizie dal Mac prima di avvisare
+var SALUTE_BATTITO_GIORNI = 4;      // giorni senza notizie prima di avvisare (valore di riserva)
+var SALUTE_SERVIZI = {              // nome del battito -> come si chiama nell'email e ogni quanti giorni avvisare
+  raccolta: { nome: 'La raccolta notturna sul Mac', giorni: 4 },
+  whatsapp: { nome: 'Il servizio WhatsApp sul Mac', giorni: 2 }
+};
 
 /** Registra che un lavoro sul Mac è arrivato in fondo. */
 function registraBattito(nome, dettaglio) {
@@ -49,13 +53,20 @@ function controllaSalute() {
     problemi.push('Non riesco a leggere la cartella 00_Inbox: ' + e.message);
   }
 
-  var battito = leggiBattito_('raccolta');
-  if (battito && battito.quando) {
-    var giorni = Math.floor((ora - new Date(battito.quando).getTime()) / (24 * 3600 * 1000));
-    if (giorni >= SALUTE_BATTITO_GIORNI) {
-      problemi.push('La raccolta notturna sul Mac non dà notizie da ' + giorni + ' giorni: il Mac è spento oppure il lavoro automatico si è fermato.');
+  // Ogni servizio del Mac lascia un battito quando lavora: se manca da giorni, qualcosa si è fermato.
+  var tutte = getProps_().getProperties();
+  Object.keys(tutte).forEach(function (chiave) {
+    if (chiave.indexOf('HEARTBEAT_') !== 0) return;
+    var nomeServizio = chiave.substring('HEARTBEAT_'.length);
+    var dato;
+    try { dato = JSON.parse(tutte[chiave]); } catch (e) { return; }
+    if (!dato || !dato.quando) return;
+    var info = SALUTE_SERVIZI[nomeServizio] || { nome: 'Il servizio "' + nomeServizio + '" sul Mac', giorni: SALUTE_BATTITO_GIORNI };
+    var giorni = Math.floor((ora - new Date(dato.quando).getTime()) / (24 * 3600 * 1000));
+    if (giorni >= info.giorni) {
+      problemi.push(info.nome + ' non dà notizie da ' + giorni + ' giorni: il Mac è spento oppure quel lavoro si è fermato.');
     }
-  }
+  });
 
   return problemi;
 }

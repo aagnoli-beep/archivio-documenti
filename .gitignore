@@ -7,3 +7,6 @@ PRIVATE.md
 mcp/node_modules/
 remote/node_modules/
 remote/.wrangler/
+
+# cache di una libreria non più usata
+.wwebjs_cache/
