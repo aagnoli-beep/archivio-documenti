@@ -195,7 +195,17 @@ async function avviaConnessione() {
         if (!contenuto) continue;
         const mime = String(contenuto.mimetype || '').split(';')[0];
         if (!MIME_BUONI.test(mime)) continue;
-        const dati = await downloadMediaMessage(m, 'buffer', {});
+        // Certi allegati (inoltri, messaggi vecchi) arrivano senza la chiave di decifratura: in quel caso
+        // si chiede al telefono di rimandare il file e si riprova una volta sola.
+        let dati;
+        try {
+          dati = await downloadMediaMessage(m, 'buffer', {});
+        } catch (primoErrore) {
+          if (!/media key|empty media/i.test(String(primoErrore.message))) throw primoErrore;
+          const rinfrescato = await sock.updateMediaMessage(m).catch(() => null);
+          if (!rinfrescato) { await log('allegato non recuperabile (il telefono non l\'ha rimandato)'); continue; }
+          dati = await downloadMediaMessage(rinfrescato, 'buffer', {});
+        }
         const minimo = diretto ? 5 * 1024 : MIN_BYTE;      // se me lo mandi apposta, prendo anche il piccolo
         if (!dati || dati.length < minimo || dati.length > MAX_BYTE) continue;
         const chi = pulisci(nomeGruppo || m.pushName || jid.split('@')[0]) || 'chat';

@@ -10,7 +10,7 @@
  */
 
 var TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token=';
-var FILE_MAX_BYTES = 60 * 1024 * 1024;
+var FILE_MAX_BYTES = 45 * 1024 * 1024;   // oltre questa soglia Apps Script non riesce a leggere il file in memoria: meglio dirlo al client, che lo prende dalla cartella di Google Drive
 var FILE_CHUNK_MAX = 6 * 1024 * 1024;   // per risposta: base64 di 6 MB resta sotto i limiti di Apps Script
 
 function doGet(e) { return handleRequest_(e, 'GET'); }
@@ -158,8 +158,15 @@ function getFilePayload_(fileId, offset, length) {
   if (size > FILE_MAX_BYTES) throw new ApiError('too_large', 'File troppo grande per il download dal sito: aprilo da Drive');
   offset = Math.max(0, offset || 0);
   length = Math.min(FILE_CHUNK_MAX, length > 0 ? length : FILE_CHUNK_MAX);
-  var blob = file.getBlob();
-  var bytes = blob.getBytes();
+  var blob, bytes;
+  try {
+    blob = file.getBlob();
+    bytes = blob.getBytes();
+  } catch (e) {
+    // Alcuni file restano sotto la soglia ma non entrano comunque in memoria: stessa risposta, così il
+    // client sa che deve prenderli dalla cartella locale di Google Drive invece che dal sito.
+    throw new ApiError('too_large', 'File troppo grande per il download dal sito: aprilo da Drive');
+  }
   var end = Math.min(size, offset + length);
   var part = (offset === 0 && end === size) ? bytes : bytes.slice(offset, end);
   return { name: file.getName(), mime: blob.getContentType() || 'application/pdf', size: size, offset: offset, length: end - offset, more: end < size, base64: Utilities.base64Encode(part) };

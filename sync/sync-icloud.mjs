@@ -140,7 +140,8 @@ async function main() {
       added++;
     } catch (e) {
       // Oltre 60 MB il backend non può restituire il file: lo prendo dalla copia locale di Google Drive per desktop.
-      const gdArchive = /troppo grande/i.test(String(e.message)) ? await findDriveDesktopArchive() : null;
+      const troppoGrande = /troppo grande|superano il massimo|exceeds the maximum/i.test(String(e.message));
+      const gdArchive = troppoGrande ? await findDriveDesktopArchive() : null;
       if (gdArchive) {
         try {
           await fs.copyFile(path.join(gdArchive, name), dest + '.part');
