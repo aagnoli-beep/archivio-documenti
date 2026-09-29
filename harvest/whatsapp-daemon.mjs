@@ -66,7 +66,7 @@ async function chiamaBackend(azione, dati) {
     const cfg = JSON.parse(fsSync.readFileSync(CONFIG, 'utf8'));
     if (!cfg.apiUrl || !cfg.secret) return null;
     const { callBackend } = await import(path.join(REPO, 'mcp', 'tools.mjs'));
-    return await callBackend(cfg.apiUrl, cfg.secret, azione, dati, { retries: 2 });
+    return await callBackend(cfg.apiUrl, cfg.secret, azione, dati, { retries: 5 });
   } catch (e) { await log('AVVISO: backend non raggiunto (' + String(e.message).slice(0, 60) + ')'); return null; }
 }
 

@@ -145,6 +145,9 @@ function dispatch_(action, user, body, cfg) {
     case 'heartbeat':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
       return registraBattito(String(body.nome || 'raccolta'), body.dettaglio);
+    case 'riepilogo':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
+      return { inviato: riepilogoSettimanale(cfg, true) };
     case 'salute':
       return { problemi: controllaSalute() };
     case 'log':

@@ -15,7 +15,9 @@ var DIGEST_DISCURSIVE_MAX = 10;
 var DIGEST_TABLE_MAX = 30;
 
 function sendDailyDigest() {
-  try { avvisaSeQualcosaNonVa(); } catch (e) { logEvent('WARN', '', 'Controllo di salute non riuscito: ' + e.message); }
+  try {
+    if (!avvisaSeQualcosaNonVa()) riepilogoSettimanale(getConfig());
+  } catch (e) { logEvent('WARN', '', 'Controllo di salute non riuscito: ' + e.message); }
   var cfg = getConfig();
   var recipients = cfg.digestEmails;
   if (!recipients.length) { logEvent('WARN', '', 'Rendiconto non inviato: DIGEST_EMAILS vuoto nel foglio Config'); return; }

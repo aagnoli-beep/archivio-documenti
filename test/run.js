@@ -16,7 +16,7 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 21); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 22); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
 t('quattro trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'processMailIntake', 'sendDailyDigest', 'exportIndexXlsx']); });
 t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 4); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
@@ -222,6 +222,41 @@ t('l\'indice si legge a pagine e dice dove continuare', () => {
   const ultima = dispatch_('index', { canEdit: true, email: 'x@y.z' }, { limit: 500, offset: 0 }, getConfig());
   assert.strictEqual(ultima.next, null, 'con tutte le righe non deve chiedere altre pagine');
 });
+
+console.log('4h. Riepilogo settimanale');
+G.__mail.length = 0;
+delete G.__props.RIEPILOGO_ULTIMO;
+const oggiNum = new Date().getDay();
+const cfgSett = Object.assign({}, getConfig(), { weeklyReportDay: oggiNum, digestEmails: ['a@b.c'], digestSenderName: 'Archivio di casa', digestReplyTo: '' });
+t('nel giorno giusto manda il riepilogo, una volta sola', () => {
+  assert.strictEqual(riepilogoSettimanale(cfgSett), true);
+  assert.strictEqual(riepilogoSettimanale(cfgSett), false, 'non deve ripetersi nello stesso giorno');
+  assert.strictEqual(G.__mail.length, 1);
+  assert.ok(/tutto in ordine/i.test(G.__mail[0].subject), G.__mail[0].subject);
+  assert.ok(/Documenti in archivio: \d+/.test(G.__mail[0].body), G.__mail[0].body.slice(0, 120));
+});
+t('negli altri giorni non manda niente', () => {
+  delete G.__props.RIEPILOGO_ULTIMO;
+  const altro = Object.assign({}, cfgSett, { weeklyReportDay: (oggiNum + 3) % 7 });
+  assert.strictEqual(riepilogoSettimanale(altro), false);
+  assert.strictEqual(G.__mail.length, 1);
+});
+t('con il riepilogo disattivato non manda niente', () => {
+  delete G.__props.RIEPILOGO_ULTIMO;
+  assert.strictEqual(riepilogoSettimanale(Object.assign({}, cfgSett, { weeklyReportDay: 0 })), false);
+});
+t('se qualcosa non va, arriva l\'avviso e non il riepilogo', () => {
+  G.__mail.length = 0;
+  delete G.__props.RIEPILOGO_ULTIMO;
+  delete G.__props['ALERT_SENT_salute'];
+  G.__props.HEARTBEAT_raccolta = JSON.stringify({ quando: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString() });
+  assert.strictEqual(avvisaSeQualcosaNonVa(), true);
+  assert.ok(/si e fermato|si è fermato/.test(G.__mail[0].subject), G.__mail[0].subject);
+  delete G.__props.HEARTBEAT_raccolta;
+  delete G.__props['ALERT_SENT_salute'];
+});
+G.__mail.length = 0;
+delete G.__props.RIEPILOGO_ULTIMO;
 
 console.log('5. PDF grande e immagini');
 const referto = { categoria: 'Salute', sottocategoria: 'Visita specialistica', sotto_sottocategoria: 'Cardiologia', tipo_documento: 'Referto', mittente: 'Dott. Mario Rossi', destinatario: 'Andrea Agnoli', soggetti: ['Andrea Agnoli'], data_documento: '2026-03-12', titolo_breve: 'Referto cardiologia', riassunto: 'ECG nella norma.', importo: '', scadenza: '', numero_pagine: 2, confidenza: 0.9 };

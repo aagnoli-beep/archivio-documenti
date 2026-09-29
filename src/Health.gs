@@ -71,6 +71,55 @@ function controllaSalute() {
   return problemi;
 }
 
+/**
+ * Una volta a settimana, se va tutto bene, manda due righe di rassicurazione: senza questo
+ * l'archivio resta muto per giorni e non si capisce se sta ancora lavorando.
+ */
+function riepilogoSettimanale(cfg, forza) {
+  var giorno = parseInt(cfg.weeklyReportDay, 10);
+  var oggi = new Date();
+  var chiave = oggi.toISOString().substring(0, 10);
+  if (!forza) {
+    if (!giorno) return false;                                // 0 = disattivato
+    if (oggi.getDay() !== giorno) return false;
+    if ((getProps_().getProperty('RIEPILOGO_ULTIMO') || '') === chiave) return false;   // già mandato oggi
+  }
+
+  var righe = getAllIndexRows();
+  var settimanaFa = Date.now() - 7 * 24 * 3600 * 1000;
+  var nuovi = righe.filter(function (r) {
+    var d = new Date(String(r.dataScansione || '').replace(' ', 'T'));
+    return !isNaN(d) && d.getTime() >= settimanaFa;
+  }).length;
+  var daVerificare = righe.filter(function (r) { return r.stato === 'Da verificare'; }).length;
+
+  var canali = [];
+  var props = getProps_().getProperties();
+  Object.keys(props).forEach(function (k) {
+    if (k.indexOf('HEARTBEAT_') !== 0) return;
+    var nome = k.substring('HEARTBEAT_'.length);
+    var etichetta = (SALUTE_SERVIZI[nome] || {}).nome || nome;
+    try {
+      var quando = new Date(JSON.parse(props[k]).quando);
+      var ore = Math.round((Date.now() - quando.getTime()) / 3600000);
+      canali.push('- ' + etichetta + ': attivo (ultimo segnale ' + (ore < 24 ? ore + ' ore fa' : Math.round(ore / 24) + ' giorni fa') + ')');
+    } catch (e) { /* battito illeggibile */ }
+  });
+
+  var corpo = 'Va tutto bene, nessun intervento richiesto.\n\n' +
+    'Documenti in archivio: ' + righe.length + '\n' +
+    'Aggiunti negli ultimi 7 giorni: ' + nuovi + '\n' +
+    (daVerificare ? 'Da verificare (quando hai tempo): ' + daVerificare + '\n' : '') +
+    (canali.length ? '\n' + canali.join('\n') + '\n' : '') +
+    '\nRicevi questo riepilogo una volta a settimana. Se qualcosa si ferma, arriva subito un\'email a parte.';
+
+  MailApp.sendEmail({ to: cfg.digestEmails.join(','), subject: 'Archivio di casa: tutto in ordine',
+    body: corpo, name: cfg.digestSenderName, replyTo: cfg.digestReplyTo || undefined });
+  getProps_().setProperty('RIEPILOGO_ULTIMO', chiave);
+  logEvent('INFO', '', 'Riepilogo settimanale inviato: ' + righe.length + ' documenti, ' + nuovi + ' nuovi');
+  return true;
+}
+
 /** Manda l'email solo se c'è davvero qualcosa che non va (al massimo una al giorno). */
 function avvisaSeQualcosaNonVa() {
   var problemi = controllaSalute();
