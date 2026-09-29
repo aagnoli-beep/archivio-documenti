@@ -140,6 +140,14 @@ async function avviaConnessione() {
     }
     if (u.connection === 'open') {
       tentativi = 0;
+      // Nomi dei gruppi presi una volta sola: così il riconoscimento non dipende da una chiamata
+      // per messaggio, che può fallire proprio mentre arriva il documento.
+      try {
+        const gruppi = await sock.groupFetchAllParticipating();
+        for (const g of Object.values(gruppi || {})) if (g && g.id) nomiGruppo.set(g.id, g.subject || '');
+        const scelti = Object.values(gruppi || {}).filter((g) => GRUPPI.indexOf(String(g.subject || '').trim().toLowerCase()) >= 0);
+        await log(`gruppi letti: ${Object.keys(gruppi || {}).length}` + (scelti.length ? `, in corsia diretta: ${scelti.map((g) => g.subject).join(', ')}` : ', nessuno in corsia diretta'));
+      } catch (e) { await log('AVVISO: elenco gruppi non letto (' + String(e.message).slice(0, 50) + ')'); }
       await log('collegato a WhatsApp' + (sock.user && sock.user.id ? ' come ' + sock.user.id.split(':')[0] : ''));
       await chiamaBackend('heartbeat', { nome: 'whatsapp', dettaglio: 'collegato' });
       if (LOGIN) { await log('collegamento riuscito: da ora riceve da solo'); setTimeout(() => termina(0), 3000); }
@@ -175,7 +183,9 @@ async function avviaConnessione() {
   };
 
   sock.ev.on('messages.upsert', async (ev) => {
-    if (ev.type !== 'notify') return;
+    // "notify" sono i messaggi ricevuti, "append" quelli che mandi tu da un altro dispositivo:
+    // servono entrambi, perché nel gruppo "Documenti" i documenti li carichi tu.
+    if (ev.type !== 'notify' && ev.type !== 'append') return;
     for (const m of ev.messages || []) {
       try {
         if (!m.message) continue;
@@ -189,6 +199,9 @@ async function avviaConnessione() {
         // Chat con me stesso e gruppo dedicato: è una scelta esplicita, quindi si archivia e basta.
         const diretto = chatConMeStesso || gruppoScelto;
         if (m.key.fromMe && !diretto) continue;
+        if (gruppoScelto && !m.message.documentMessage && !m.message.imageMessage && !m.message.documentWithCaptionMessage) {
+          await log(`nel gruppo "${nomeGruppo}" è arrivato un messaggio senza allegato (niente da archiviare)`);
+        }
         const contenuto = m.message.documentMessage
           || (m.message.documentWithCaptionMessage && m.message.documentWithCaptionMessage.message && m.message.documentWithCaptionMessage.message.documentMessage)
           || m.message.imageMessage;
