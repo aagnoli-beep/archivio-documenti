@@ -58,10 +58,11 @@ function controllaSalute() {
   Object.keys(tutte).forEach(function (chiave) {
     if (chiave.indexOf('HEARTBEAT_') !== 0) return;
     var nomeServizio = chiave.substring('HEARTBEAT_'.length);
+    var info = SALUTE_SERVIZI[nomeServizio];
+    if (!info) return;                       // battiti sconosciuti (prove, servizi dismessi): non allarmano
     var dato;
     try { dato = JSON.parse(tutte[chiave]); } catch (e) { return; }
     if (!dato || !dato.quando) return;
-    var info = SALUTE_SERVIZI[nomeServizio] || { nome: 'Il servizio "' + nomeServizio + '" sul Mac', giorni: SALUTE_BATTITO_GIORNI };
     var giorni = Math.floor((ora - new Date(dato.quando).getTime()) / (24 * 3600 * 1000));
     if (giorni >= info.giorni) {
       problemi.push(info.nome + ' non dà notizie da ' + giorni + ' giorni: il Mac è spento oppure quel lavoro si è fermato.');
@@ -98,7 +99,8 @@ function riepilogoSettimanale(cfg, forza) {
   Object.keys(props).forEach(function (k) {
     if (k.indexOf('HEARTBEAT_') !== 0) return;
     var nome = k.substring('HEARTBEAT_'.length);
-    var etichetta = (SALUTE_SERVIZI[nome] || {}).nome || nome;
+    if (!SALUTE_SERVIZI[nome]) return;       // nel riepilogo elenco solo i servizi veri
+    var etichetta = SALUTE_SERVIZI[nome].nome;
     try {
       var quando = new Date(JSON.parse(props[k]).quando);
       var ore = Math.round((Date.now() - quando.getTime()) / 3600000);

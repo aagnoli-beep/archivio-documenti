@@ -71,7 +71,13 @@ async function main() {
 
   const api = (action, payload = {}) => callBackend(cfg.apiUrl, cfg.secret, action, payload);
 
-  const index = await fetchIndex(api);
+  let index;
+  try {
+    index = await fetchIndex(api);
+  } catch (e) {
+    await log(`AVVISO: indice non letto (${e.message}); riprovo al prossimo giro`);
+    return 0;
+  }
   const wanted = new Map();
   for (const d of index.docs) if (d.id && d.nomeFile) wanted.set(d.nomeFile, d);
 

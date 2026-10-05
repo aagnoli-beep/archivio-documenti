@@ -72,14 +72,23 @@ export async function fetchIndex(api, opts = {}) {
   const minimo = 20;
   const docs = [];
   let offset = 0, meta = null;
-  for (let giri = 0; giri < 200; giri++) {
-    let pagina;
-    try {
-      pagina = await api('index', { offset, limit: limite });
-    } catch (e) {
-      if (/risposta non valida dal backend/i.test(String(e && e.message)) && limite > minimo) { limite = Math.max(minimo, Math.floor(limite / 2)); continue; }
-      throw e;
+  const attesa = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let giri = 0; giri < 400; giri++) {
+    let pagina, falliti = 0, ultimo;
+    // Il web app di Google rifiuta risposte a caso, a qualunque dimensione: si insiste con attese
+    // crescenti e solo dopo tre tentativi a vuoto si prova con una pagina più piccola.
+    for (let tentativo = 0; tentativo < 6 && !pagina; tentativo++) {
+      try { pagina = await api('index', { offset, limit: limite }); }
+      catch (e) {
+        ultimo = e;
+        if (e && e.permanent) throw e;
+        if (!/risposta non valida dal backend/i.test(String(e && e.message))) throw e;
+        falliti++;
+        if (falliti >= 3 && limite > minimo) { limite = Math.max(minimo, Math.floor(limite / 2)); falliti = 0; }
+        await attesa(Math.min(30000, 2000 * Math.pow(2, tentativo)));
+      }
     }
+    if (!pagina) throw ultimo;
     if (!meta) meta = pagina;
     docs.push(...(pagina.docs || []));
     if (!pagina.next) break;

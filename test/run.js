@@ -307,6 +307,9 @@ t('chiave sbagliata o corta -> rifiutata', () => { assert.strictEqual(call({ act
 t('backup_xlsx rigenera l\'export se vecchio e lo restituisce', () => { G.__httpHandler = (url) => url.indexOf('export?format=xlsx') > 0 ? { code: 200, body: '', bytes: [80, 75, 3, 4] } : claudeOk(bolletta); const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(/^Indice_/.test(r.data.name)); assert.ok(G.__props.XLSX_LAST_EXPORT); G.__httpHandler = () => claudeOk(bolletta); });
 t('log: ultime righe leggibili con la chiave di famiglia', () => { const r = call({ action: 'log', secret: 'chiave-di-famiglia-molto-lunga-123456', limit: 5 }); assert.strictEqual(r.ok, true); assert.strictEqual(r.data.length, 5); assert.ok(r.data[4].livello && r.data[4].quando); });
 console.log('6b. rendiconto giornaliero via email');
+// Il lunedì partirebbe anche il riepilogo settimanale: qui lo segno come già inviato oggi,
+// così questi test contano solo le email del rendiconto.
+G.__props.RIEPILOGO_ULTIMO = new Date().toISOString().substring(0, 10);
 ss.getSheetByName('Config').rows.forEach(r => { if (r[0]==='DIGEST_EMAILS') r[1]='andrea@example.com, serena@example.com'; if (r[0]==='DIGEST_REPLY_TO') r[1]='andrea@outlook.example'; if (r[0]==='DIGEST_SENDER_NAME') r[1]='Andrea Agnoli'; });
 G.__mail.length = 0; delete G.__props.DIGEST_LAST_AT;
 const nowStr = Utilities.formatDate(new Date(), '', 'yyyy-MM-dd HH:mm');
