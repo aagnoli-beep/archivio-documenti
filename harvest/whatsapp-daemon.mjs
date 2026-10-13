@@ -84,7 +84,22 @@ function gruppiDaArchiviare() {
   } catch { return ['documenti']; }
 }
 
+// Se il processo resta senza lavori in coda (succede dopo una disconnessione) Node uscirebbe con
+// codice 0 e sembrerebbe tutto a posto: questo timer lo tiene vivo e il controllo qui sotto lo fa
+// morire con errore, così launchd lo riavvia davvero.
+let ultimoCollegamento = Date.now();
+function sorveglia() {
+  setInterval(() => {}, 60000);                                    // niente unref: il processo resta vivo
+  setInterval(async () => {
+    const fermo = Math.round((Date.now() - ultimoCollegamento) / 60000);
+    if (fermo >= 15) { await log(`ERRORE: nessun collegamento da ${fermo} minuti, mi faccio riavviare`); process.exit(1); }
+  }, 5 * 60 * 1000);
+  process.on('unhandledRejection', async (e) => { await log('ERRORE non gestito: ' + String(e && e.message || e).slice(0, 120)); process.exit(1); });
+  process.on('uncaughtException', async (e) => { await log('ERRORE imprevisto: ' + String(e && e.message || e).slice(0, 120)); process.exit(1); });
+}
+
 async function main() {
+  if (!LOGIN) sorveglia();
   await fs.mkdir(DIRETTI, { recursive: true });
   await fs.mkdir(INBOX, { recursive: true });
   await fs.mkdir(AUTH, { recursive: true });
@@ -94,7 +109,41 @@ async function main() {
 
 async function avviaConnessione() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH);
-  const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
+
+  // Credenziali presenti ma non più valide (dispositivo rimosso da WhatsApp): senza questo controllo
+  // il servizio sbatte all'infinito contro l'errore 405 e sembra vivo pur non ricevendo niente.
+  if (!LOGIN && !NUMERO_PER_CODICE && state.creds && state.creds.me && !state.creds.registered) {
+    await log('SESSIONE NON PIÙ VALIDA: WhatsApp ha scollegato il dispositivo, serve rifare il collegamento');
+    await chiamaBackend('avviso', { chiave: 'whatsapp', oggetto: 'WhatsApp da ricollegare',
+      testo: 'Il dispositivo dell\'archivio non è più collegato a WhatsApp (sessione invalidata).\n\n' +
+        'Sul Mac apri il Terminale ed esegui:\n  node "' + path.join(REPO, 'harvest', 'whatsapp-daemon.mjs') + '" --login\n' +
+        'e inquadra il codice QR con il telefono personale.\n\nIl resto dell\'archivio continua a funzionare.' });
+    await new Promise((r) => setTimeout(r, 30 * 60 * 1000));   // aspetta invece di martellare WhatsApp
+    process.exit(1);
+  }
+
+  // La versione del protocollo va tenuta aggiornata: con una vecchia WhatsApp rifiuta la connessione
+  // con errore 405. Il controllo in rete a volte fallisce (è successo), quindi c'è una catena di riserve:
+  // rete → ultima versione salvata in configurazione → valore noto di riserva.
+  const RISERVA = [2, 3000, 1050196505];
+  let version = RISERVA, origine = 'riserva';
+  try {
+    const salvata = (JSON.parse(fsSync.readFileSync(CONFIG, 'utf8')).harvest || {}).versioneWhatsApp;
+    if (Array.isArray(salvata) && salvata.length === 3) { version = salvata; origine = 'configurazione'; }
+  } catch { /* niente config */ }
+  try {
+    const r = await fetchLatestBaileysVersion();
+    if (r && r.version && !r.error) {
+      version = r.version; origine = 'rete';
+      try {
+        const cfgFile = JSON.parse(fsSync.readFileSync(CONFIG, 'utf8'));
+        cfgFile.harvest = cfgFile.harvest || {};
+        cfgFile.harvest.versioneWhatsApp = r.version;
+        fsSync.writeFileSync(CONFIG, JSON.stringify(cfgFile, null, 1));
+      } catch { /* configurazione non scrivibile: pazienza */ }
+    }
+  } catch { /* si usa la riserva */ }
+  await log(`versione WhatsApp Web ${version.join('.')} (${origine})`);
 
   // Il nome qui sotto è quello che vedi sul telefono in "Dispositivi collegati": così è chiaro cos'è.
   const sock = makeWASocket({
@@ -140,6 +189,7 @@ async function avviaConnessione() {
     }
     if (u.connection === 'open') {
       tentativi = 0;
+      ultimoCollegamento = Date.now();
       // Nomi dei gruppi presi una volta sola: così il riconoscimento non dipende da una chiamata
       // per messaggio, che può fallire proprio mentre arriva il documento.
       try {

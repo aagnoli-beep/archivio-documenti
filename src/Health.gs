@@ -22,6 +22,15 @@ function registraBattito(nome, dettaglio) {
   return { registrato: true };
 }
 
+/** Smette di sorvegliare un servizio (sospensione voluta): senza questo arriverebbe un avviso al giorno. */
+function dimenticaBattito(nome) {
+  var chiave = 'HEARTBEAT_' + String(nome || '').replace(/[^a-z0-9_]/gi, '').substring(0, 30);
+  var esisteva = !!getProps_().getProperty(chiave);
+  getProps_().deleteProperty(chiave);
+  if (esisteva) logEvent('INFO', '', 'Sorveglianza sospesa per il servizio ' + nome);
+  return { dimenticato: esisteva };
+}
+
 function leggiBattito_(nome) {
   try { return JSON.parse(getProps_().getProperty('HEARTBEAT_' + nome) || 'null'); } catch (e) { return null; }
 }

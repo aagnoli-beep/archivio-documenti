@@ -148,6 +148,9 @@ function dispatch_(action, user, body, cfg) {
     case 'riepilogo':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
       return { inviato: riepilogoSettimanale(cfg, true) };
+    case 'dimentica_battito':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
+      return dimenticaBattito(String(body.nome || ''));
     case 'salute':
       return { problemi: controllaSalute() };
     case 'log':

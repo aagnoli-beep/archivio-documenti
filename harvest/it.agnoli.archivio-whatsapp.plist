@@ -9,10 +9,8 @@
     <string>__SCRIPT__</string>
   </array>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key><false/>
-  </dict>
+  <!-- Riavvia sempre: se il processo muore in silenzio (uscita 0) deve comunque tornare su. -->
+  <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>120</integer>
   <key>StandardErrorPath</key><string>__HOME__/Library/Logs/archivio-whatsapp.err.log</string>
 </dict>
