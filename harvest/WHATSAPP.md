@@ -3,60 +3,39 @@
 Scopo: salvare gli allegati (documenti e foto) che arrivano sul WhatsApp **personale** del proprietario e
 passarli alla pipeline dell'archivio. Solo lettura: non si inviano messaggi, non si segna nulla come letto.
 
-## Scelta tecnica
+## Come funziona oggi (dal 15/10/2026)
 
-Non si legge la pagina di WhatsApp Web. Il Mac si registra come **dispositivo collegato** (companion
-device) e parla il protocollo multi-device: WebSocket + crittografia Signal, tramite
-`@whiskeysockets/baileys` **6.7.18**. Quindi i cambi di grafica di WhatsApp non lo toccano.
+Gli allegati **non** li prende più un nostro dispositivo collegato. Sul Mac è installato il **connettore
+WhatsApp** (cartella `~/Desktop/Claude Code Progetti/Whatsapp`), che:
+- è collegato ai due account, personale e lavoro, e resta collegato per conto suo;
+- tiene un database SQLite per account (`data/personale/whatsapp.db`: tabelle `messages`, `chats`, `contacts`);
+- espone un servizio locale su `127.0.0.1:3791` che consegna l'allegato di un messaggio, con il token
+  che sta in `data/personale/token.txt`.
 
-Due strade scartate, con il motivo:
-- **Scraping del DOM con Playwright**: funzionava, ma i selettori cambiano a ogni restyling. Abbandonato.
-- **`whatsapp-web.js` 1.34.7**: si collega e legge i contatti, ma `getChats()` muore con un errore
-  minificato `r` su WhatsApp Web 2.3000.104x. Inutile insistere, anche fissando `webVersionCache`.
-- **Baileys 7.0.0-rc**: l'abbinamento viene rifiutato dal telefono. Serve la 6.7.18.
+`harvest/whatsapp-connettore.mjs` (lanciato dal giro notturno, prima della raccolta) fa tre cose:
+1. legge il database **in sola lettura** (`sqlite3 -readonly`) cercando i messaggi con allegato degli ultimi giorni;
+2. scarta quello che non serve: tipi non ammessi, file sotto i 15 KB o sopra i 25 MB, roba inviata da noi
+   (tranne in corsia diretta), e quello già visto (stato in `~/.config/archivio-documenti/whatsapp-connettore-state.json`);
+3. scarica i superstiti dal servizio locale e li mette in `whatsapp-inbox` oppure, per il gruppo
+   **"Documenti"** e la chat con se stessi, in `whatsapp-diretti` (corsia diretta, niente selezione).
 
-## Collegamento (una volta sola)
+Si usa solo l'account **personale**: quello di lavoro non viene mai letto.
 
-File: `harvest/whatsapp-daemon.mjs`. Credenziali in `~/.config/archivio-documenti/whatsapp-auth`
-(`useMultiFileAuthState`, ~33 file: `creds.json`, pre-key, app-state-sync).
+## Perché abbiamo cambiato
 
-```bash
-node harvest/whatsapp-daemon.mjs --login              # QR nel terminale + PNG sulla Scrivania
-node harvest/whatsapp-daemon.mjs --pair 39XXXXXXXXXX  # codice di 8 caratteri da digitare sul telefono
-```
+La prima versione usava `@whiskeysockets/baileys` e registrava il Mac come dispositivo collegato (QR).
+Ha funzionato, ma: WhatsApp chiude la sessione con codice 515 subito dopo l'abbinamento e va riconnessa;
+la versione del protocollo va tenuta aggiornata o la connessione viene rifiutata con 405; i posti per i
+dispositivi collegati sono quattro e si esauriscono; dopo qualche tentativo WhatsApp blocca gli
+abbinamenti ("impossibile collegare nuovi dispositivi in questo momento"); ed è formalmente contro le
+condizioni d'uso. Il 9 ottobre il servizio è morto e non si è più potuto ricollegare.
+Il connettore risolve tutto questo: è già collegato, non consuma un nostro posto e non va mantenuto da noi.
 
-Dettagli che fanno la differenza:
-- **Subito dopo l'abbinamento WhatsApp chiude la connessione con codice 515.** È normale: bisogna
-  riconnettersi immediatamente. Se il processo esce, sul telefono resta "Accesso in corso" e sembra
-  che non funzioni. La riconnessione automatica è dentro `avviaConnessione()`.
-- Il **codice numerico scade in poco più di un minuto**: va digitato con la schermata già aperta.
-- `browser: ['Archivio di casa', 'Chrome', '121.0.0']` è il nome che il proprietario vede in
-  *Dispositivi collegati*: serve perché sappia cos'è e possa staccarlo.
+## Il dettaglio che era costato di più (vale ancora)
 
-## Servizio sempre acceso
-
-`launchd` → `it.agnoli.archivio-whatsapp` (`harvest/it.agnoli.archivio-whatsapp.plist`), con
-`KeepAlive.SuccessfulExit = false`, `ThrottleInterval 120`, avviato da `harvest/whatsapp.sh`.
-Node **non è nel PATH di launchd** (sta sotto `~/.nvm/...`): lo risolve `harvest/trova-node.sh`.
-Caduta di connessione → attesa crescente e nuovo tentativo. `loggedOut` → credenziali cancellate ed
-email di avviso. A ogni collegamento, e poi ogni 6 ore, chiama l'azione `heartbeat` del backend: se il
-battito manca per più di 2 giorni, il controllo serale manda un'email.
-
-## Lettura dei messaggi
-
-Evento `messages.upsert`. **Si accettano sia `notify` sia `append`**: `notify` sono i messaggi ricevuti,
-`append` quelli inviati dal proprietario da un altro dispositivo. Ignorare `append` è stato un bug reale:
-il gruppo "Documenti" restava sempre vuoto, perché i documenti li caricava lui.
-
-- Ricevuto o proprio: `m.key.fromMe`. I propri si scartano, **tranne** in corsia diretta.
-- Nomi dei gruppi: `groupFetchAllParticipating()` al collegamento, messi in una `Map` (355 gruppi).
-  Non chiederli per messaggio: la chiamata può fallire proprio mentre arriva il documento.
-- Allegati: `documentMessage`, `documentWithCaptionMessage.message.documentMessage`, `imageMessage`.
-- Scarico: `downloadMediaMessage(m, 'buffer')`. Se fallisce con *"Cannot derive from empty media key"*
-  (capita con gli inoltri) si chiama `sock.updateMediaMessage(m)`, che fa rimandare il file dal telefono,
-  e si riprova una volta.
-- Ammessi: PDF, JPEG, PNG, HEIC, DOC, DOCX, XLSX. Minimo 15 KB (5 KB in corsia diretta), massimo 25 MB.
-- Stato in `whatsapp-state.json`, chiave `m.key._serialized`: niente doppioni fra riavvii.
+I messaggi che il proprietario invia da un altro dispositivo arrivano con un'etichetta diversa da quelli
+ricevuti. Ignorarli significava non vedere mai i documenti caricati **da lui** nel gruppo "Documenti".
+Nel database del connettore la differenza è la colonna `from_me`: in corsia diretta si prendono comunque.
 
 ## Due corsie
 
@@ -65,26 +44,28 @@ il gruppo "Documenti" restava sempre vuoto, perché i documenti li caricava lui.
 | normale | qualsiasi chat | `~/.config/archivio-documenti/whatsapp-inbox` | passa dalla selezione notturna |
 | diretta | gruppo in `harvest.gruppiArchivio` (default `["Documenti"]`) o chat con se stessi | `~/.config/archivio-documenti/whatsapp-diretti` | archiviato senza selezione, file rimosso dopo il caricamento |
 
-Il transito normale si ripulisce dopo 14 giorni.
-
 ## Il giro giornaliero
 
-`launchd` → `it.agnoli.archivio-harvest`, ogni notte alle 3:20, esegue `harvest/daily-harvest.mjs`, che
-tratta quelle due cartelle come sorgenti insieme a Scrivania, Download, Documenti, iCloud Drive, libreria
-Foto e caselle di posta personali:
+`launchd` → `it.agnoli.archivio-harvest`, ogni notte alle 3:20, esegue `harvest/harvest.sh`, che lancia
+prima `whatsapp-connettore.mjs --giorni 3` e poi `daily-harvest.mjs`. Quest'ultimo tratta le due cartelle
+come sorgenti insieme a Scrivania, Download, Documenti, iCloud Drive, libreria Foto e caselle personali:
+estrae il testo in locale (OCR compreso), scarta il rumore, e manda **solo il testo** all'azione `judge`
+del backend, dove Claude decide. Gli approvati vanno nell'Inbox di Drive, al massimo 25 al giorno.
+A fine giro viene registrato il battito `whatsapp`: se manca per più di 2 giorni, il controllo serale avvisa.
 
-1. estrae il testo in locale (`pdftotext`; `pdftoppm` + `tesseract -l ita+eng` per scansioni e foto; `sips` per HEIC);
-2. filtro locale a costo zero (nomi di famiglia, parole da documento, esclusioni);
-3. i superstiti vanno all'azione backend **`judge`** (`src/Judge.gs`, modello `claude-sonnet-5`): riceve
-   **solo testo**, mai il file, così la chiave API resta nelle Script Properties di Apps Script;
-4. la corsia diretta salta i punti 2 e 3;
-5. gli approvati vanno nell'Inbox di Drive con l'azione `upload` (massimo 25 al giorno, `harvest.massimoAlGiorno`),
-   e da lì parte la classificazione normale dell'archivio.
+## Impostazioni (`~/.config/archivio-documenti/config.json`, sezione `harvest`)
 
-## Limiti da sapere
+| Chiave | Significato |
+|---|---|
+| `connettoreWhatsApp` | cartella dati dell'account personale del connettore |
+| `portaConnettore` | porta del servizio locale (3791) |
+| `gruppiArchivio` | gruppi in corsia diretta (default `["Documenti"]`) |
+| `numeroPersonale` | numero usato per riconoscere la chat con se stessi |
 
-- Client non ufficiale: formalmente contro le condizioni di WhatsApp. Uso personale, in sola lettura e a
-  basso volume: rischio basso ma non nullo (al limite, limitazioni sull'account).
-- **Niente storico**: arrivano solo i messaggi successivi al collegamento. Quelli di prima non si recuperano.
-- A Mac spento i messaggi restano in coda sul telefono e vengono consegnati alla riconnessione.
+## Limiti
+
+- Se il connettore viene spento o scollegato, il giro notturno non trova allegati nuovi: il battito manca
+  e dopo due giorni arriva l'email di avviso.
+- Dal database si vedono solo i messaggi che il connettore ha registrato: quelli precedenti alla sua
+  installazione non ci sono.
 - Registro unico: `~/Library/Logs/archivio-harvest.log`, righe con prefisso `[whatsapp]`.
