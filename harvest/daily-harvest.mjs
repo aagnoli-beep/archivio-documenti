@@ -35,7 +35,7 @@ const numArg = (nome, def) => { const i = args.indexOf(nome); return i >= 0 ? pa
 const DOC_EXT = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.heic', '.heif', '.docx', '.doc']);
 const MAX_BYTES = 25 * 1024 * 1024;
 const MIN_IMG_BYTES = 120 * 1024;          // sotto questa soglia sono icone, loghi, firme
-const ESCLUDI = /\/(node_modules|\.git|\.venv|site-packages|Library\/Caches|\.Trash|Claude Code Progetti|Archivio Documenti|PDFServicesSDK|blob_storage|GPUCache|Session Storage|Code Cache|IndexedDB|Service Worker)\//i;
+const ESCLUDI = /\/(node_modules|\.git|\.venv|site-packages|Library\/Caches|\.Trash|Claude Code Progetti|Archivio Documenti|PDFServicesSDK|blob_storage|GPUCache|Session Storage|Code Cache|IndexedDB|Cestino\.mbox|Posta eliminata\.mbox|Deleted Messages\.mbox|Trash\.mbox|Posta Eliminata\.mbox|Service Worker)\//i;
 const NOMI_DA_SALTARE = /^(Screenshot|Schermata|CleanShot|Simulator Screen|icon|logo|avatar|sprite)/i;
 
 async function log(msg) {
@@ -187,7 +187,9 @@ async function main() {
       try { st = await fs.stat(f); } catch { continue; }
       if (st.mtimeMs < limite || st.size === 0 || st.size > MAX_BYTES) continue;
       if (ext !== '.pdf' && ext !== '.docx' && ext !== '.doc' && st.size < MIN_IMG_BYTES) continue;
-      candidati.push({ path: f, nome, ext, size: st.size, origine: s.origine, diretto: !!s.diretto });
+      const inSpam = /\/(Posta indesiderata|Junk|Spam|Bulk Mail)\.mbox\//i.test(f);
+      candidati.push({ path: f, nome, ext, size: st.size, diretto: !!s.diretto,
+        origine: inSpam ? s.origine + ' (finita nella posta indesiderata)' : s.origine });
       quanti++;
       if (quanti >= (h.massimoPerSorgente || 400)) break;
     }

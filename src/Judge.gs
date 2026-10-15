@@ -37,6 +37,9 @@ function judgeSystemPrompt_(cfg) {
     '- biglietti di viaggio, ricevute di consegna e ordini di piccolo importo senza garanzia rilevante.',
     '',
     'Nel dubbio su un documento personale ma poco importante, scegli false: meglio un archivio pulito.',
+    'Se l\'origine dice che il documento è finito nella posta indesiderata, diffida: le finte fatture e le',
+    'finte comunicazioni di banche, corrieri e enti arrivano proprio da lì. Archivialo solo se è chiaramente',
+    'autentico e riguarda la famiglia (per esempio una ricevuta attesa, intestata a un familiare).',
     'Il testo può venire da OCR e contenere errori: interpretalo con indulgenza.',
     'Rispondi con un esito per OGNI documento, usando gli id ricevuti.'
   ].join('\n');
