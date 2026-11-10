@@ -415,6 +415,142 @@ t('importMailAttachments segnala i messaggi inesistenti senza fermarsi', () => {
 });
 
 
+console.log('9. testo integrale, ricerca nel contenuto e indicizzazione');
+const docSalute = G.__mkfile(archive, 'referto-peso.pdf', pdfBytes, 'application/pdf');
+appendIndexRow({ id: docSalute.getId(), nomeFile: 'referto-peso.pdf', link: driveViewUrl_(docSalute.getId()), dataDocumento: '2024-03-14',
+  dataScansione: '2026-11-10', categoria: 'Salute', sottocategoria: 'Visita specialistica', tipoDocumento: 'Referto',
+  mittente: 'Dott. Rossi', destinatario: 'Andrea Agnoli', soggetti: 'Andrea Agnoli', titolo: 'Ecocardiogramma',
+  riassunto: 'Ecocardiogramma nella norma.', stato: 'Auto', paroleChiave: 'cuore' });
+G.__docs['forzato'] = '';
+const testoFinto = 'Esame obiettivo: paziente in buone condizioni generali. Altezza 178 cm, peso 88,5 kg, BMI 27,9. Pressione 120/80.';
+G.__nodes[docSalute.getId()].blob = new (require('./gas-runtime.js').Blob)(Array.from(Buffer.from('%PDF-1.4 finto')), 'application/pdf', 'referto-peso.pdf');
+G.Drive.Files.copy = ((orig) => (res, id) => { const r = orig(res, id); G.__docs[r.id] = (id === docSalute.getId() ? testoFinto : G.__docs[r.id]); return r; })(G.Drive.Files.copy);
+
+const copieOcrPrima = Object.keys(G.__docs).length;
+const t1 = getTesto(docSalute.getId(), {});
+t('getTesto estrae il testo del documento con l\'OCR di Drive', () => {
+  assert.ok(t1.testo.indexOf('peso 88,5 kg') >= 0, t1.testo);
+  assert.strictEqual(t1.origine, 'OCR appena fatto');
+  assert.strictEqual(t1.caratteri, testoFinto.length);
+  assert.strictEqual(t1.more, false);
+});
+t('la copia del testo finisce nella cartella "Testi" del Drive di famiglia', () => {
+  const testi = DriveApp.getFolderById(G.__props.TESTI_FOLDER_ID);
+  assert.strictEqual(testi.getName(), 'Testi');
+  const it = testi.getFilesByName(docSalute.getId() + '.txt');
+  assert.ok(it.hasNext(), 'il .txt non è stato creato');
+  assert.ok(it.next().getBlob().getDataAsString('UTF-8').indexOf('88,5 kg') >= 0);
+});
+const t2 = getTesto(docSalute.getId(), {});
+t('la seconda lettura usa la copia salvata, senza rifare l\'OCR', () => {
+  assert.strictEqual(t2.origine, 'copia salvata');
+  assert.strictEqual(Object.keys(G.__docs).length, copieOcrPrima + 1, 'è stata fatta una conversione in più');
+});
+t('i documenti lunghi arrivano a pezzi con il punto da cui ripartire', () => {
+  const p1 = getTesto(docSalute.getId(), { length: 40 });
+  assert.strictEqual(p1.testo.length, 40);
+  assert.strictEqual(p1.more, true);
+  assert.strictEqual(p1.next, 40);
+  const p2 = getTesto(docSalute.getId(), { offset: p1.next, length: 40 });
+  assert.strictEqual(p2.offset, 40);
+  assert.ok(testoFinto.indexOf(p2.testo) === 40);
+});
+t('testo di un documento che non è nell\'archivio -> not_found', () => {
+  assert.throws(() => getTesto('non-esiste', {}), (e) => e.code === 'not_found');
+});
+
+G.__fullText = {}; G.__fullText[docSalute.getId()] = testoFinto;
+const ric = cercaTestoPieno('peso', { limit: 5 });
+t('cercaTestoPieno trova il documento dal contenuto e riporta le righe intorno alla parola', () => {
+  assert.strictEqual(ric.total, 1);
+  assert.strictEqual(ric.docs[0].id, docSalute.getId());
+  assert.ok(ric.docs[0].estratti.length >= 1);
+  assert.ok(ric.docs[0].estratti[0].indexOf('peso 88,5 kg') >= 0, ric.docs[0].estratti[0]);
+  assert.strictEqual(ric.estratti_mancanti, 0);
+});
+t('cercaTestoPieno ignora i file fuori dall\'archivio e la ricerca vuota', () => {
+  G.__fullText[f1.getId()] = 'bolletta';
+  const fuori = G.__mkfile(inbox, 'estraneo.pdf', pdfBytes, 'application/pdf');
+  G.__fullText[fuori.getId()] = 'peso';
+  const r = cercaTestoPieno('peso', { limit: 5 });
+  assert.ok(!r.docs.some(d => d.id === fuori.getId()), 'un file non indicizzato è entrato nei risultati');
+  assert.throws(() => cercaTestoPieno('  ', {}), (e) => e.code === 'bad_request');
+});
+t('gli estratti non si sovrappongono e mostrano i puntini di sospensione', () => {
+  const lungo = 'inizio. '.repeat(40) + 'peso 90 kg ' + 'coda. '.repeat(40) + 'peso 70 kg ' + 'fine. '.repeat(40);
+  const e = estrattiDaTesto_(lungo, ['peso'], 4);
+  assert.strictEqual(e.length, 2);
+  assert.ok(e[0].indexOf('…') === 0 && e[0].indexOf('peso 90 kg') > 0);
+  assert.ok(e[1].indexOf('peso 70 kg') > 0);
+});
+
+const docDaIndicizzare = G.__mkfile(archive, 'senza-testo.pdf', pdfBytes, 'application/pdf');
+appendIndexRow({ id: docDaIndicizzare.getId(), nomeFile: 'senza-testo.pdf', dataDocumento: '2022-01-05', dataScansione: '2026-11-10',
+  categoria: 'Altro', titolo: 'Senza testo', stato: 'Auto' });
+const ind = indicizzaTesti({ ids: [docSalute.getId(), docDaIndicizzare.getId()] });
+t('indicizzaTesti distingue i testi già salvati da quelli nuovi', () => {
+  assert.strictEqual(ind.gia_presenti, 1, 'il testo già salvato non è stato riconosciuto');
+  assert.strictEqual(ind.nuovi, 1);
+  assert.strictEqual(ind.rimasti, 0);
+  assert.strictEqual(ind.totale, 2);
+  assert.ok(testoCacheGet_(docDaIndicizzare.getId()) !== null, 'la copia del testo non è stata creata');
+});
+t('indicizzaTesti per categoria non esce dalla categoria chiesta', () => {
+  const r = indicizzaTesti({ categoria: 'Categoria inesistente' });
+  assert.strictEqual(r.totale, 0);
+});
+
+G.__httpHandler = () => ({ code: 200, body: { stop_reason: 'end_turn', usage: { input_tokens: 900 }, content: [{ type: 'text', text: JSON.stringify({ risposta: 'Nel 2024 pesavi 88,5 kg.', documenti: [docSalute.getId()] }) }] } });
+G.__http.length = 0;
+const risp = askArchive('qual era il mio peso nel 2024?', [], getConfig());
+t('chiedi_archivio passa a Claude anche gli estratti dal testo', () => {
+  const req = G.__http.filter(h => h.url.indexOf('anthropic.com') >= 0).pop();
+  const body = JSON.parse(req.opts.payload);
+  const msg = body.messages[body.messages.length - 1].content;
+  assert.ok(msg.indexOf('ESTRATTI DAL TESTO') >= 0, 'il blocco degli estratti manca');
+  assert.ok(msg.indexOf('peso 88,5 kg') >= 0, 'le righe del documento non sono arrivate');
+  assert.ok(body.system.indexOf('estratti') >= 0);
+  assert.ok(risp.estratti >= 1, 'nessun estratto allegato');
+  assert.strictEqual(risp.docs[0].id, docSalute.getId());
+});
+t('se la ricerca a testo pieno di Drive non risponde, chiedi_archivio funziona comunque', () => {
+  const orig = G.Drive.Files.list;
+  G.Drive.Files.list = () => { throw new Error('Drive giù'); };
+  try {
+    const r = askArchive('e nel 2020?', [], getConfig());
+    assert.strictEqual(r.estratti, 0);
+    assert.ok(r.searched > 0);
+  } finally { G.Drive.Files.list = orig; }
+});
+t('un documento illeggibile non blocca l\'archiviazione', () => {
+  const orig = G.Drive.Files.copy;
+  G.Drive.Files.copy = () => { throw new Error('OCR non disponibile'); };
+  G.__httpHandler = () => claudeOk(bolletta);
+  const fx = G.__mkfile(inbox, 'Scan_ocr_ko.pdf', pdfBytes, 'application/pdf');
+  try {
+    processInbox();
+    assert.ok(getIndexRow(fx.getId()), 'il documento non è stato archiviato');
+  } finally { G.Drive.Files.copy = orig; }
+});
+
+console.log('10. API: testo, ricerca nel contenuto, indicizzazione');
+const utenteLettore = { email: 'serena@example.com', name: 'Serena', picture: '', canEdit: false };
+const utenteEditor = { email: 'andrea@example.com', name: 'Andrea', picture: '', canEdit: true };
+t('azione "testo" restituisce il contenuto del documento', () => {
+  const r = dispatch_('testo', utenteLettore, { id: docSalute.getId() }, getConfig());
+  assert.ok(r.testo.indexOf('88,5 kg') >= 0);
+});
+t('azione "cerca_testo" restituisce i documenti con gli estratti', () => {
+  const r = dispatch_('cerca_testo', utenteLettore, { query: 'peso', limit: 3 }, getConfig());
+  assert.ok(r.docs.length >= 1);
+});
+t('azione "indicizza" solo per chi può modificare', () => {
+  assert.throws(() => dispatch_('indicizza', utenteLettore, {}, getConfig()), (e) => e.code === 'forbidden');
+  const r = dispatch_('indicizza', utenteEditor, { ids: [docSalute.getId()] }, getConfig());
+  assert.strictEqual(r.gia_presenti, 1);
+});
+
+
 console.log('\n' + passed + ' test superati' + (process.exitCode ? ', CI SONO FALLIMENTI' : ', nessun fallimento'));
 console.log('\nEsempio di Indice (prime 4 righe):');
 getAllIndexRows().slice(0, 4).forEach(r => console.log('  ' + [r.dataDocumento, r.categoria, r.sottocategoria, r.mittente, r.soggetti, r.stato, r.nomeFile].join(' | ')));

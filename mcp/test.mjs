@@ -25,6 +25,18 @@ const server = http.createServer((req, res) => {
       case 'ask': return reply({ ok: true, user, data: { answer: 'La bolletta scade il 2026-09-20.', docs: [docs[0]], searched: 2, total: 2 } });
       case 'file': { const full = Buffer.from('%PDF'); const off = b.offset || 0; const part = full.subarray(off, off + 2); return reply({ ok: true, user, data: { name: 'Bolletta.pdf', mime: 'application/pdf', size: full.length, offset: off, length: part.length, more: off + part.length < full.length, base64: part.toString('base64') } }); }
       case 'update': { const d = { ...docs[1], ...b.fields, stato: 'Verificato' }; return reply({ ok: true, user, data: d }); }
+      case 'testo': {
+        if (b.id === 'a1') return reply({ ok: false, code: 'no_text', error: 'PDF protetto da password' });
+        const tutto = 'Esame obiettivo. Altezza 178 cm, peso 88,5 kg, BMI 27,9. ECG nella norma.';
+        const off = b.offset || 0, len = b.length || 15000;
+        const fetta = tutto.substring(off, off + len);
+        return reply({ ok: true, user, data: { id: b.id, nome: docs[1].nomeFile, titolo: docs[1].titolo, dataDocumento: docs[1].dataDocumento, caratteri: tutto.length, offset: off, length: fetta.length, more: off + fetta.length < tutto.length, next: off + fetta.length < tutto.length ? off + fetta.length : null, origine: 'copia salvata', testo: fetta } });
+      }
+      case 'cerca_testo': {
+        if (b.query === 'niente') return reply({ ok: true, user, data: { total: 0, estratti_mancanti: 0, docs: [], query: b.query } });
+        return reply({ ok: true, user, data: { total: 2, estratti_mancanti: 1, query: b.query,
+          docs: [{ ...docs[1], estratti: ['…Altezza 178 cm, peso 88,5 kg, BMI 27,9…'] }, { ...docs[0], estratti: [] }] } });
+      }
       default: return reply({ ok: false, code: 'bad_request', error: 'azione sconosciuta' });
     }
   });
@@ -40,7 +52,7 @@ let passed = 0;
 const t = async (name, fn) => { try { await fn(); passed++; console.log('  ✔ ' + name); } catch (e) { console.log('  ✘ ' + name + '\n    ' + (e.stack || e)); process.exitCode = 1; } };
 const text = (r) => r.content.map((c) => c.text).join('\n');
 
-await t('elenca 6 strumenti', async () => { const { tools } = await client.listTools(); assert.deepStrictEqual(tools.map((x) => x.name).sort(), ['cerca_documenti', 'chiedi_archivio', 'correggi_documento', 'dettaglio_documento', 'documenti_recenti', 'scarica_documento']); });
+await t('elenca 8 strumenti', async () => { const { tools } = await client.listTools(); assert.deepStrictEqual(tools.map((x) => x.name).sort(), ['cerca_documenti', 'cerca_nel_testo', 'chiedi_archivio', 'correggi_documento', 'dettaglio_documento', 'documenti_recenti', 'leggi_documento', 'scarica_documento']); });
 await t('cerca "enel" trova la bolletta (senza accenti, insensibile alle maiuscole)', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: 'ENEL bollétta' } })); assert.ok(r.includes('1 documenti trovati')); assert.ok(r.includes('[a1]')); });
 await t('filtro persona + categoria', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: '', persona: 'andrea', categoria: 'salute' } })); assert.ok(r.includes('[b2]') && !r.includes('[a1]')); });
 await t('nessun risultato', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: 'zzz' } })); assert.ok(r.includes('Nessun documento')); });
@@ -49,6 +61,34 @@ await t('documenti recenti ordinati per scansione', async () => { const r = text
 await t('chiedi_archivio riporta risposta e documenti citati', async () => { const r = text(await client.callTool({ name: 'chiedi_archivio', arguments: { domanda: 'Quando scade la bolletta?' } })); assert.ok(r.includes('2026-09-20') && r.includes('Documenti citati') && r.includes('[a1]')); });
 await t('scarica_documento salva il file', async () => { const r = text(await client.callTool({ name: 'scarica_documento', arguments: { id: 'a1' } })); const p = r.match(/Salvato: (.+?\.pdf)/)[1]; assert.strictEqual((await fs.readFile(p)).toString(), '%PDF'); });
 await t('correggi_documento manda solo i campi indicati', async () => { const r = text(await client.callTool({ name: 'correggi_documento', arguments: { id: 'b2', campi: { titolo: 'Referto cardiologico' } } })); assert.ok(r.includes('Aggiornato') && r.includes('# Referto cardiologico')); const u = calls.filter((c) => c.action === 'update')[0]; assert.deepStrictEqual(u.fields, { titolo: 'Referto cardiologico' }); });
+await t('leggi_documento restituisce il testo del documento', async () => {
+  const r = text(await client.callTool({ name: 'leggi_documento', arguments: { id: 'b2' } }));
+  assert.ok(r.includes('peso 88,5 kg'), r);
+  assert.ok(r.includes('# Referto cardiologico') || r.includes('# Referto'), r);
+  assert.ok(!r.includes('continua: richiama'), 'documento corto: non serve la paginazione');
+});
+await t('leggi_documento a pezzi dice da dove ripartire', async () => {
+  const r = text(await client.callTool({ name: 'leggi_documento', arguments: { id: 'b2', da: 0, quanto: 1000 } }));
+  const q = calls.filter((c) => c.action === 'testo').pop();
+  assert.strictEqual(q.length, 1000);
+  assert.ok(r.includes('caratteri in tutto'));
+});
+await t('leggi_documento spiega cosa fare se il testo non è estraibile', async () => {
+  const r = await client.callTool({ name: 'leggi_documento', arguments: { id: 'a1' } });
+  assert.strictEqual(r.isError, true);
+  assert.ok(text(r).includes('password') && text(r).includes('scarica_documento'), text(r));
+});
+await t('cerca_nel_testo mostra le righe trovate e segnala i documenti senza estratti', async () => {
+  const r = text(await client.callTool({ name: 'cerca_nel_testo', arguments: { query: 'peso' } }));
+  assert.ok(r.includes('2 documenti contengono "peso"'), r);
+  assert.ok(r.includes('peso 88,5 kg'));
+  assert.ok(r.includes('1 documenti senza estratti'));
+  assert.ok(r.includes('leggi_documento'));
+});
+await t('cerca_nel_testo senza risultati', async () => {
+  const r = text(await client.callTool({ name: 'cerca_nel_testo', arguments: { query: 'niente' } }));
+  assert.ok(r.includes('Nessun documento contiene'));
+});
 await t('la chiave viene inviata in ogni chiamata, mai nell\'URL', async () => { assert.ok(calls.every((c) => c.secret === 'segreto-di-test-abcdefghijklmnop')); assert.ok(!apiUrl.includes('segreto')); });
 
 await client.close(); server.close();

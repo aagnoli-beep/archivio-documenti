@@ -19,7 +19,7 @@ const nodes = {};   // id -> node
 class Blob {
   constructor(bytes, mime, name) { this.bytes = bytes; this.mime = mime; this.name = name; }
   getBytes() { return this.bytes; } getName() { return this.name; } setName(n) { this.name = n; return this; }
-  getDataAsString() { return Buffer.from(Array.from(this.bytes, (b) => b & 255)).toString('latin1'); }
+  getDataAsString(charset) { const b = Buffer.from(Array.from(this.bytes, (x) => x & 255)); return b.toString(/utf-?8/i.test(String(charset || '')) ? 'utf8' : 'latin1'); }
   getContentType() { return this.mime; } setContentType(m) { this.mime = m; return this; } copyBlob() { return new Blob(this.bytes.slice(), this.mime, this.name); } getSize() { return this.bytes.length; }
 }
 class Node {
@@ -60,9 +60,20 @@ G.Drive = { Files: {
   copy: (res, id) => { const src = nodes[id]; const doc = new Node('file', res.name, root); doc.blob = new Blob([], res.mimeType, res.name); G.__docs[doc.id] = 'TESTO OCR DI ' + src.name + ': ' + 'Referto visita cardiologica. Paziente Andrea Agnoli. Dott. Mario Rossi. 12/03/2026.'; return { id: doc.id }; },
   get: (id, opts) => { const n = nodes[id]; if (!n) throw new Error('404'); return { appProperties: n.appProperties, capabilities: { canEdit: G.__canEdit !== false }, thumbnailLink: G.__noThumb ? undefined : 'https://lh3.googleusercontent.com/thumb/' + id + '=s220' }; },
   create: (res, blob) => { const doc = new Node('file', res.name, root); doc.blob = new Blob(blob ? blob.getBytes() : [], res.mimeType, res.name); doc.isGoogleDoc = res.mimeType === 'application/vnd.google-apps.document'; G.__docs[doc.id] = blob ? Buffer.from(blob.getBytes()).toString() : ''; return { id: doc.id }; },
+  // Ricerca a testo pieno finta: guarda G.__fullText[id] (testo del documento) e il nome del file.
+  list: (opts) => {
+    const m = /fullText contains '((?:[^'\\]|\\.)*)'/.exec(String((opts || {}).q || ''));
+    const needle = (m ? m[1].replace(/\\(.)/g, '$1') : '').toLowerCase();
+    if (!needle) return { files: [] };
+    const hit = (n) => ((G.__fullText || {})[n.id] || '').toLowerCase().includes(needle) || n.name.toLowerCase().includes(needle);
+    const files = Object.keys(nodes).map((k) => nodes[k])
+      .filter((n) => n.kind === 'file' && !n.trashed && hit(n)).map((n) => ({ id: n.id, name: n.name }));
+    return { files: files };
+  },
   remove: (id) => { const n = nodes[id]; if (n) { n.trashed = true; n.parent.children = n.parent.children.filter(c => c !== n); delete nodes[id]; } }
 } };
 G.DocumentApp = { openById: (id) => ({ getBody: () => ({ getText: () => G.__docs[id] || '' }) }) };
+G.__fullText = {};       // id -> testo visto dalla ricerca a testo pieno di Drive
 G.__mkfile = (folder, name, bytes, mime, ageMs) => { const f = folder.createFile(new Blob(bytes, mime, name)); const t = new Date(Date.now() - (ageMs == null ? 600000 : ageMs)); f.created = t; f.updated = t; return f; };
 G.__nodes = nodes;
 
@@ -109,7 +120,7 @@ G.Utilities = {
   base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
   base64Decode: (s) => Array.from(Buffer.from(s, 'base64')),
   sleep: () => {},
-  newBlob: (bytes, mime, name) => new Blob(bytes, mime, name)
+  newBlob: (bytes, mime, name) => new Blob(typeof bytes === 'string' ? Array.from(Buffer.from(bytes, 'utf8')) : bytes, mime, name)
 };
 G.UrlFetchApp = { fetch: (url, opts) => {
   G.__http.push({ url, opts });

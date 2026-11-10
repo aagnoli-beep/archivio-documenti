@@ -79,6 +79,7 @@ function processFile_(file, cfg, archive) {
   try { setFileMetadata(file.getId(), meta); } catch (e) { logEvent('WARN', newName, 'Descrizione Drive non scritta: ' + e.message); }
   appendIndexRow(meta);
   clearAttempts_(file.getId());
+  salvaTestoSePossibile_(file.getId());   // copia del testo per le ricerche nel contenuto (non blocca mai)
 
   var u = raw._usage || {};
   logEvent('INFO', newName, 'Classificato: ' + meta.categoria + ' / ' + meta.sottocategoria +

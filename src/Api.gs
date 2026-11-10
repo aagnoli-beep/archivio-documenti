@@ -6,7 +6,7 @@
  * Client ID e la lista ALLOWED_EMAILS del foglio Config. Chi non è in lista non vede nulla.
  *
  * Il sito manda sempre POST con body JSON (Content-Type text/plain, per evitare il preflight CORS):
- *   { action: 'index' | 'doc' | 'file' | 'update' | 'upload' | 'ask' | 'me', token: <id_token>, ... }
+ *   { action: 'index' | 'doc' | 'file' | 'update' | 'upload' | 'ask' | 'testo' | 'cerca_testo' | 'me', token: <id_token>, ... }
  */
 
 var TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token=';
@@ -153,6 +153,13 @@ function dispatch_(action, user, body, cfg) {
       return dimenticaBattito(String(body.nome || ''));
     case 'salute':
       return { problemi: controllaSalute() };
+    case 'testo':
+      return getTesto(String(body.id || ''), { offset: body.offset, length: body.length });
+    case 'cerca_testo':
+      return cercaTestoPieno(String(body.query || ''), { limit: body.limit, estrai: body.estrai });
+    case 'indicizza':
+      if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
+      return indicizzaTesti({ ids: body.ids, categoria: body.categoria, anno: body.anno, budgetMs: body.budgetMs });
     case 'log':
       return getLogRows_(parseInt(body.limit, 10) || 100);
     default:

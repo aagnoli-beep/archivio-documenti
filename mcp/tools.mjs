@@ -179,7 +179,7 @@ export function registerTools(server, api, opts = {}) {
   const text = (t) => ({ content: [{ type: 'text', text: t }] });
 
   server.tool('cerca_documenti',
-    'Cerca nell\'archivio documentale di famiglia (bollette, referti, contratti, lettere...). Ricerca libera su titolo, mittente, persone, riassunto e parole chiave, con filtri opzionali. Restituisce un elenco con gli ID da usare con dettaglio_documento.',
+    'Cerca nell\'archivio documentale di famiglia (bollette, referti, contratti, lettere...). Ricerca sulle SCHEDE: titolo, mittente, persone, riassunto e parole chiave, con filtri opzionali. Restituisce un elenco con gli ID da usare con dettaglio_documento o leggi_documento. Per cercare un dato scritto DENTRO ai documenti (un peso, una misura, un numero di polizza, una cifra) usa invece cerca_nel_testo.',
     {
       query: z.string().default('').describe('Parole da cercare (es. "bolletta luce", "referto Serena"). Vuoto = tutti.'),
       categoria: z.string().optional().describe('Filtra per categoria (Salute, Casa, Utenze, Banca-Finanza, Assicurazioni, Auto-Veicoli, Lavoro, Fisco-Tasse, Scuola-Figli, Acquisti-Garanzie, Documenti-Identita, Legale, Viaggi, Altro)'),
@@ -214,13 +214,56 @@ export function registerTools(server, api, opts = {}) {
       return text(docs.length ? `Ultimi ${docs.length} documenti (archivio: ${idx.docs.length}):\n${docs.map(shortLine).join('\n')}` : 'Archivio vuoto.');
     });
 
+  server.tool('leggi_documento',
+    'Legge il TESTO INTEGRALE di un documento dell\'archivio (OCR del PDF o dell\'immagine). Da usare quando il dato cercato sta dentro al documento e non nella scheda: pesi, misure, valori di un referto, clausole di un contratto, numeri di polizza. I documenti lunghi arrivano a pezzi: continua con `da` = valore di "prosegui da".',
+    {
+      id: z.string().describe('ID del documento (da cerca_documenti o cerca_nel_testo)'),
+      da: z.number().int().min(0).default(0).describe('Carattere da cui ripartire, per i documenti lunghi'),
+      quanto: z.number().int().min(1000).max(40000).optional().describe('Quanti caratteri leggere (default 15000)')
+    },
+    async ({ id, da, quanto }) => {
+      let r;
+      try { r = await api('testo', { id, offset: da, length: quanto }); }
+      catch (e) {
+        const msg = e && e.code === 'no_text'
+          ? `Non riesco a estrarre testo da questo documento (${e.message}). Prova con link_documento o scarica_documento.`
+          : `Lettura non riuscita: ${e && e.message}`;
+        return { content: [{ type: 'text', text: msg }], isError: true };
+      }
+      const testa = `# ${r.titolo || r.nome}\nID: ${r.id} · ${fmtDate(r.dataDocumento)} · ${r.caratteri} caratteri in tutto (${r.origine})`;
+      const coda = r.more ? `\n\n--- continua: richiama leggi_documento con da=${r.next} ---` : '';
+      return text(`${testa}\n\n${r.testo}${coda}`);
+    });
+
+  server.tool('cerca_nel_testo',
+    'Cerca una parola o una frase DENTRO al testo dei documenti dell\'archivio, non solo nelle schede, e restituisce le righe intorno a ogni occorrenza. È lo strumento giusto per domande tipo "in quali referti è scritto il peso", "dove compare questo numero di polizza", "quali documenti parlano di caldaia".',
+    {
+      query: z.string().min(2).describe('Parola o frase da cercare nel testo (es. "peso", "kg", "numero di polizza")'),
+      limit: z.number().int().min(1).max(50).default(10).describe('Quanti documenti al massimo')
+    },
+    async ({ query, limit }) => {
+      const r = await api('cerca_testo', { query, limit });
+      if (!r.docs || !r.docs.length) return text(`Nessun documento contiene "${query}".`);
+      const blocchi = r.docs.map((d) => {
+        const righe = (d.estratti || []).length
+          ? (d.estratti || []).map((e) => '   ' + e).join('\n')
+          : '   (testo non ancora estratto: usa leggi_documento con questo ID)';
+        return `${shortLine(d)}\n${righe}`;
+      }).join('\n\n');
+      const nota = r.estratti_mancanti ? `\n\n(${r.estratti_mancanti} documenti senza estratti: leggili con leggi_documento, oppure ripeti la ricerca per averli)` : '';
+      return text(`${r.total} documenti contengono "${query}" (mostro ${r.docs.length}):\n\n${blocchi}${nota}`);
+    });
+
   server.tool('chiedi_archivio',
-    'Fa una domanda in linguaggio naturale all\'assistente dell\'archivio, che cerca tra le schede dei documenti e risponde citando quelli usati. Utile per domande tipo "quando scade l\'assicurazione?" o "quanto abbiamo pagato di luce?".',
+    'Fa una domanda in linguaggio naturale all\'assistente dell\'archivio, che cerca tra le schede e dentro al testo dei documenti e risponde citando quelli usati. Utile per domande tipo "quando scade l\'assicurazione?" o "quanto abbiamo pagato di luce?". Per ricostruire una serie di dati nel tempo conviene invece cerca_nel_testo + leggi_documento.',
     { domanda: z.string().min(2).describe('La domanda, in italiano') },
     async ({ domanda }) => {
       const r = await api('ask', { question: domanda, history: [] });
       const cites = (r.docs || []).map(shortLine).join('\n');
-      return text(`${r.answer || 'Nessuna risposta.'}${cites ? '\n\nDocumenti citati:\n' + cites : ''}\n\n(schede consultate: ${r.searched} su ${r.total})`);
+      const dettaglio = `schede consultate: ${r.searched} su ${r.total}` +
+        (r.nelTesto ? `, di cui ${r.nelTesto} trovate cercando nel testo` : '') +
+        (r.estratti ? `, ${r.estratti} con estratti dal documento` : '');
+      return text(`${r.answer || 'Nessuna risposta.'}${cites ? '\n\nDocumenti citati:\n' + cites : ''}\n\n(${dettaglio})`);
     });
 
   if (opts.saveFile) {

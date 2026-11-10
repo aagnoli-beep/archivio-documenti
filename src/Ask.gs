@@ -2,12 +2,16 @@
  * Ask.gs - "Chiedi all'archivio": risponde alle domande della famiglia cercando nell'Indice.
  *
  * 1. Seleziona i documenti più pertinenti con un punteggio sulle parole della domanda.
- * 2. Passa a Claude la domanda e le schede dei documenti (metadati, riassunto, parole chiave).
- * 3. Claude risponde in italiano citando gli ID dei documenti usati; il sito li mostra come link.
+ * 2. Aggiunge quelli che contengono le parole della domanda nel testo del PDF (ricerca a testo pieno di Drive):
+ *    serve per dati che stanno nel documento ma non nel riassunto (un peso, una pressione, un numero di polizza).
+ * 3. Per i primi di questi allega anche gli estratti, cioè le righe vere intorno alle parole cercate.
+ * 4. Passa a Claude la domanda, le schede e gli estratti; Claude risponde in italiano citando gli ID usati.
  */
 
 var ASK_MAX_DOCS = 60;
 var ASK_HISTORY_TURNS = 6;
+var ASK_FULLTEXT_DOCS = 20;   // documenti in più trovati cercando dentro al testo dei PDF
+var ASK_ESTRATTI_DOCS = 6;    // di quanti allegare le righe vere del documento
 
 function normalizeText_(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ');
@@ -56,11 +60,37 @@ function askArchive(question, history, cfg) {
   var byId = {};
   all.forEach(function (d) { byId[d.id] = d; });
 
+  // Documenti che contengono le parole della domanda nel testo, anche se la scheda non ne parla.
+  var idTesto = [];
+  try { idTesto = idPerTestoPieno_(question, byId).slice(0, ASK_FULLTEXT_DOCS); }
+  catch (e) { logEvent('WARN', '', 'Ricerca nel testo non disponibile per questa domanda: ' + e.message); }
+  var inElenco = {};
+  relevant.forEach(function (d) { inElenco[d.id] = true; });
+  var aggiunti = idTesto.filter(function (x) { return !inElenco[x.id]; }).map(function (x) { return byId[x.id]; });
+  relevant = aggiunti.concat(relevant);
+
+  // Estratti dal testo per i primi documenti trovati nel contenuto: solo copie già salvate, più
+  // qualche OCR fatto al momento, con un tetto di tempo per non far scadere la richiesta.
+  var parole = termini_(question);
+  var estratti = [], ocrFatti = 0, inizio = Date.now();
+  idTesto.slice(0, ASK_ESTRATTI_DOCS).forEach(function (x) {
+    var testo = testoCacheGet_(x.id);
+    if (testo === null && ocrFatti < 3 && Date.now() - inizio < 90000) {
+      try { testo = estraiTesto_(DriveApp.getFileById(x.id)); testoCachePut_(x.id, testo); ocrFatti++; }
+      catch (e) { testo = null; }
+    }
+    if (testo === null) return;
+    var righe = estrattiDaTesto_(testo, parole, 3);
+    if (righe.length) estratti.push({ id: x.id, doc: byId[x.id], righe: righe });
+  });
+
   var system = [
     'Sei l\'assistente dell\'archivio documentale di una famiglia italiana. Rispondi in italiano, in modo breve e concreto.',
-    'Hai a disposizione SOLO le schede dei documenti elencate nel messaggio (metadati e riassunti, non il testo integrale).',
+    'Hai a disposizione le schede dei documenti elencate nel messaggio (metadati e riassunti) e, per alcuni, gli estratti: le righe vere copiate dal documento.',
     'Regole:',
-    '- Rispondi usando solo le informazioni delle schede. Se non trovi nulla di pertinente, dillo chiaramente e suggerisci cosa cercare o scansionare.',
+    '- Rispondi usando solo le informazioni delle schede e degli estratti. Se non trovi nulla di pertinente, dillo chiaramente e suggerisci cosa cercare o scansionare.',
+    '- Gli estratti sono il testo vero del documento: per dati come pesi, misure, numeri di polizza o importi valgono più del riassunto.',
+    '- Se il dato chiesto potrebbe stare nel testo di un documento elencato senza estratti, dillo e indica quale documento conviene leggere per intero.',
     '- Cita i documenti che hai usato mettendo i loro ID nel campo "documenti" (solo ID presenti nell\'elenco).',
     '- Per date, importi e scadenze riporta i valori esatti delle schede. Se una scheda è "Da verificare", segnala che i dati potrebbero essere imprecisi.',
     '- Se la domanda è generica (es. "cosa c\'è di Serena?"), elenca i documenti pertinenti in modo ordinato.',
@@ -73,9 +103,15 @@ function askArchive(question, history, cfg) {
     if (h && h.text && (h.role === 'user' || h.role === 'assistant')) messages.push({ role: h.role, content: String(h.text).substring(0, 2000) });
   });
   if (messages.length && messages[0].role !== 'user') messages.shift();
+  var bloccoEstratti = estratti.length
+    ? '\n\nESTRATTI DAL TESTO DEI DOCUMENTI (righe copiate dal documento):\n' + estratti.map(function (e) {
+        var d = e.doc || {};
+        return '[' + e.id + '] ' + (d.dataDocumento || '?') + ' - ' + (d.titolo || d.nomeFile || '') + '\n   ' + e.righe.join('\n   ');
+      }).join('\n')
+    : '';
   messages.push({
     role: 'user',
-    content: 'SCHEDE DOCUMENTI:\n' + (relevant.map(docCard_).join('\n') || '(archivio vuoto)') + '\n\nDOMANDA: ' + question
+    content: 'SCHEDE DOCUMENTI:\n' + (relevant.map(docCard_).join('\n') || '(archivio vuoto)') + bloccoEstratti + '\n\nDOMANDA: ' + question
   });
 
   var body = {
@@ -109,6 +145,6 @@ function askArchive(question, history, cfg) {
   var out;
   try { out = JSON.parse(text); } catch (e) { out = { risposta: text, documenti: [] }; }
   var docs = (out.documenti || []).map(function (id) { return byId[String(id).replace(/[\[\]]/g, '')]; }).filter(Boolean);
-  logEvent('INFO', '', 'Domanda all\'archivio (' + relevant.length + ' schede, ' + ((data.usage || {}).input_tokens || '?') + ' token): ' + question.substring(0, 120));
-  return { answer: out.risposta || '', docs: docs, searched: relevant.length, total: all.length };
+  logEvent('INFO', '', 'Domanda all\'archivio (' + relevant.length + ' schede, ' + estratti.length + ' con estratti, ' + ((data.usage || {}).input_tokens || '?') + ' token): ' + question.substring(0, 120));
+  return { answer: out.risposta || '', docs: docs, searched: relevant.length, estratti: estratti.length, nelTesto: idTesto.length, total: all.length };
 }

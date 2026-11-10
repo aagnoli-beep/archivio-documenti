@@ -11,6 +11,7 @@ var PROP = {
   INBOX_FOLDER_ID: 'INBOX_FOLDER_ID',
   ARCHIVE_FOLDER_ID: 'ARCHIVE_FOLDER_ID',
   BACKUP_FOLDER_ID: 'BACKUP_FOLDER_ID',
+  TESTI_FOLDER_ID: 'TESTI_FOLDER_ID',
   SPREADSHEET_ID: 'SPREADSHEET_ID',
   ANTHROPIC_API_KEY: 'ANTHROPIC_API_KEY'
 };
@@ -26,7 +27,8 @@ var FOLDER_NAMES = {
   ROOT: 'Archivio Documenti',
   INBOX: '00_Inbox',
   ARCHIVE: 'Archivio',
-  BACKUP: 'Backup'
+  BACKUP: 'Backup',
+  TEXTS: 'Testi'
 };
 
 /** Colonne del foglio Indice, nell'ordine. Le chiavi sono usate nel codice e nella web app. */
