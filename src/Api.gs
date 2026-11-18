@@ -162,7 +162,7 @@ function dispatch_(action, user, body, cfg) {
       return indicizzaTesti({ ids: body.ids, categoria: body.categoria, anno: body.anno, budgetMs: body.budgetMs });
     case 'condividi':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
-      return condividiArchivio(cfg, body.emails);
+      return condividiArchivio(cfg, body.emails, body.rimuovi);
     case 'verifica_accessi':
       if (!user.canEdit) throw new ApiError('forbidden', 'Non hai i permessi');
       return verificaAccessiDocumenti({ offset: body.offset, budgetMs: body.budgetMs, sistema: body.sistema });

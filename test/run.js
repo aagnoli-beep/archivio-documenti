@@ -610,7 +610,20 @@ t('condividi con un elenco di indirizzi lo salva nel foglio Config', () => {
   assert.strictEqual(r.indirizzi.find(x => x.email === 'nuova@example.com').esito, 'accesso aggiunto');
   ss.getSheetByName('Config').rows.forEach(x => { if (x[0] === 'SHARE_EMAILS') x[1] = 'andrea@example.com, serena@example.com, andrea@outlook.example'; });
 });
+t('togliere un indirizzo gli leva il permesso e lo cancella da SHARE_EMAILS', () => {
+  const r = revocaAccesso(['Serena@Example.com', 'mai.vista@example.com']);
+  assert.strictEqual(r.indirizzi.find(x => x.email === 'serena@example.com').esito, 'accesso tolto');
+  assert.strictEqual(r.indirizzi.find(x => x.email === 'mai.vista@example.com').esito, 'non aveva accesso');
+  assert.ok(getConfig().shareEmails.indexOf('serena@example.com') < 0, 'resta nell\'elenco di casa');
+  assert.ok(!statoCondivisione().con_accesso.some(x => x.email === 'serena@example.com'));
+  // e la prossima condivisione non glielo ridà
+  assert.ok(!condividiArchivio().indirizzi.some(x => x.email === 'serena@example.com'));
+});
+t('il proprietario non si toglie da solo', () => {
+  assert.strictEqual(revocaAccesso(['andrea@example.com']).indirizzi[0].esito, 'non tolgo il proprietario');
+});
 t('azione "accessi" la legge chiunque, "condividi" solo chi può modificare', () => {
+  ss.getSheetByName('Config').rows.forEach(x => { if (x[0] === 'SHARE_EMAILS') x[1] = 'andrea@example.com, serena@example.com'; });
   const r = dispatch_('accessi', utenteLettore, {}, getConfig());
   assert.ok(Array.isArray(r.attesi));
   assert.throws(() => dispatch_('condividi', utenteLettore, {}, getConfig()), (e) => e.code === 'forbidden');

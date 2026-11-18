@@ -75,6 +75,9 @@ G.Drive = { Files: {
   // Permessi finti: G.__permessi[fileId] = [{id,emailAddress,role,type}]; G.__noPermessi elenca
   // gli indirizzi che Drive rifiuta (indirizzi non Google).
   list: (id, opts) => ({ permissions: (G.__permessi[id] || []).slice() }),
+  remove: (id, permId, opts) => {
+    G.__permessi[id] = (G.__permessi[id] || []).filter((p) => p.id !== permId);
+  },
   create: (res, id, opts) => {
     const email = String(res.emailAddress || '').toLowerCase();
     if ((G.__noPermessi || []).indexOf(email) >= 0) throw new Error('non è un account Google valido');

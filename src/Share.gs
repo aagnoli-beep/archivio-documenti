@@ -57,10 +57,45 @@ function impostaIndirizziCondivisione_(emails) {
 }
 
 /**
+ * Toglie l'accesso alla cartella Archivio a uno o più indirizzi (e li leva da SHARE_EMAILS).
+ * Serve quando un indirizzo non deve più vedere l'archivio: una casella di lavoro, un account chiuso.
+ * @return {Array<{email:string, esito:string, dettaglio?:string}>}
+ */
+function revocaAccesso(emails, cfg) {
+  cfg = cfg || getConfig();
+  var folderId = getProp_(PROP.ARCHIVE_FOLDER_ID, true);
+  var elenco = (Array.isArray(emails) ? emails : String(emails || '').split(','))
+    .map(function (e) { return String(e).trim().toLowerCase(); }).filter(Boolean);
+  if (!elenco.length) throw new ApiError('bad_request', 'Nessun indirizzo da togliere');
+  var owner = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  var gia = permessiCartella_(folderId);
+
+  var esiti = elenco.map(function (email) {
+    if (email === owner) return { email: email, esito: 'non tolgo il proprietario' };
+    var p = gia[email];
+    if (!p) return { email: email, esito: 'non aveva accesso' };
+    try {
+      Drive.Permissions.remove(folderId, p.id, { supportsAllDrives: true });
+      return { email: email, esito: 'accesso tolto' };
+    } catch (e) {
+      logEvent('WARN', '', 'Accesso non tolto a ' + email + ': ' + e.message);
+      return { email: email, esito: 'non riuscito', dettaglio: e.message };
+    }
+  });
+
+  // L'indirizzo esce anche dall'elenco di casa, altrimenti la prossima condivisione glielo ridà.
+  var restano = emailCondivisione_(cfg).filter(function (e) { return elenco.indexOf(e) < 0; });
+  if (restano.length) impostaIndirizziCondivisione_(restano);
+  logEvent('INFO', '', 'Accessi tolti: ' + esiti.map(function (x) { return x.email + ' = ' + x.esito; }).join('; '));
+  return { cartella: folderId, indirizzi: esiti, attesi: restano };
+}
+
+/**
  * Dà accesso in lettura alla cartella Archivio a tutti gli indirizzi di famiglia.
  * @return {{cartella:string, indirizzi:Array<{email:string, esito:string, dettaglio?:string}>}}
  */
-function condividiArchivio(cfg, emails) {
+function condividiArchivio(cfg, emails, rimuovi) {
+  if (rimuovi && rimuovi.length) { revocaAccesso(rimuovi, cfg); cfg = null; }
   if (emails && emails.length) { impostaIndirizziCondivisione_(emails); cfg = null; }
   cfg = cfg || getConfig();
   var folderId = getProp_(PROP.ARCHIVE_FOLDER_ID, true);
