@@ -58,7 +58,7 @@ G.DriveApp = {
 G.Drive = { Files: {
   update: (res, id) => { const n = nodes[id]; if (!n) throw new Error('404'); if (res.description !== undefined) n.description = res.description; if (res.appProperties) n.appProperties = res.appProperties; return { id }; },
   copy: (res, id) => { const src = nodes[id]; const doc = new Node('file', res.name, root); doc.blob = new Blob([], res.mimeType, res.name); G.__docs[doc.id] = 'TESTO OCR DI ' + src.name + ': ' + 'Referto visita cardiologica. Paziente Andrea Agnoli. Dott. Mario Rossi. 12/03/2026.'; return { id: doc.id }; },
-  get: (id, opts) => { const n = nodes[id]; if (!n) throw new Error('404'); return { appProperties: n.appProperties, capabilities: { canEdit: G.__canEdit !== false }, thumbnailLink: G.__noThumb ? undefined : 'https://lh3.googleusercontent.com/thumb/' + id + '=s220' }; },
+  get: (id, opts) => { const n = nodes[id]; if (!n) throw new Error('404'); return { id: n.id, name: n.name, trashed: !!n.trashed, parents: n.parent ? [n.parent.id] : [], appProperties: n.appProperties, capabilities: { canEdit: G.__canEdit !== false }, thumbnailLink: G.__noThumb ? undefined : 'https://lh3.googleusercontent.com/thumb/' + id + '=s220' }; },
   create: (res, blob) => { const doc = new Node('file', res.name, root); doc.blob = new Blob(blob ? blob.getBytes() : [], res.mimeType, res.name); doc.isGoogleDoc = res.mimeType === 'application/vnd.google-apps.document'; G.__docs[doc.id] = blob ? Buffer.from(blob.getBytes()).toString() : ''; return { id: doc.id }; },
   // Ricerca a testo pieno finta: guarda G.__fullText[id] (testo del documento) e il nome del file.
   list: (opts) => {
@@ -71,7 +71,21 @@ G.Drive = { Files: {
     return { files: files };
   },
   remove: (id) => { const n = nodes[id]; if (n) { n.trashed = true; n.parent.children = n.parent.children.filter(c => c !== n); delete nodes[id]; } }
+}, Permissions: {
+  // Permessi finti: G.__permessi[fileId] = [{id,emailAddress,role,type}]; G.__noPermessi elenca
+  // gli indirizzi che Drive rifiuta (indirizzi non Google).
+  list: (id, opts) => ({ permissions: (G.__permessi[id] || []).slice() }),
+  create: (res, id, opts) => {
+    const email = String(res.emailAddress || '').toLowerCase();
+    if ((G.__noPermessi || []).indexOf(email) >= 0) throw new Error('non è un account Google valido');
+    G.__permessi[id] = (G.__permessi[id] || []).filter((p) => String(p.emailAddress).toLowerCase() !== email);
+    const p = { id: newId('perm'), emailAddress: email, role: res.role, type: res.type };
+    G.__permessi[id].push(p);
+    return p;
+  }
 } };
+G.__permessi = {};
+G.__noPermessi = [];
 G.DocumentApp = { openById: (id) => ({ getBody: () => ({ getText: () => G.__docs[id] || '' }) }) };
 G.__fullText = {};       // id -> testo visto dalla ricerca a testo pieno di Drive
 G.__mkfile = (folder, name, bytes, mime, ageMs) => { const f = folder.createFile(new Blob(bytes, mime, name)); const t = new Date(Date.now() - (ageMs == null ? 600000 : ageMs)); f.created = t; f.updated = t; return f; };
@@ -82,6 +96,7 @@ class Range {
   constructor(sheet, r, c, nr, nc) { this.s = sheet; this.r = r; this.c = c; this.nr = nr; this.nc = nc; }
   getValues() { const out = []; for (let i = 0; i < this.nr; i++) { const row = this.s.rows[this.r - 1 + i] || []; const o = []; for (let j = 0; j < this.nc; j++) o.push(row[this.c - 1 + j] === undefined ? '' : row[this.c - 1 + j]); out.push(o); } return out; }
   setValues(v) { for (let i = 0; i < v.length; i++) { while (this.s.rows.length < this.r + i) this.s.rows.push([]); const row = this.s.rows[this.r - 1 + i]; for (let j = 0; j < v[i].length; j++) row[this.c - 1 + j] = v[i][j]; } return this; }
+  setValue(v) { return this.setValues([[v]]); } getValue() { return this.getValues()[0][0]; }
   setFontWeight() { return this; } createFilter() { this.s.filter = true; return this; }
 }
 class Sheet {

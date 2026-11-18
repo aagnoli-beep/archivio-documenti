@@ -78,6 +78,16 @@ function controllaSalute() {
     }
   });
 
+  // Gli indirizzi di famiglia devono poter aprire i file: se un accesso sparisce, i link smettono di funzionare.
+  try {
+    var acc = statoCondivisione();
+    if (acc.da_sistemare.length) {
+      problemi.push('Questi indirizzi non possono più aprire i documenti su Drive: ' + acc.da_sistemare.join(', ') + '. Rilancia la condivisione dell\'archivio.');
+    }
+  } catch (e) {
+    logEvent('WARN', '', 'Controllo degli accessi non riuscito: ' + e.message);
+  }
+
   return problemi;
 }
 

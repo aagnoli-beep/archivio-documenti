@@ -275,17 +275,23 @@ export function registerTools(server, api, opts = {}) {
         const dest = await opts.saveFile(String(f.name || id + '.pdf').replace(/[\/\\:*?"<>|]/g, '_'), f.bytes, cartella);
         return text(`Salvato: ${dest} (${Math.round((f.size || 0) / 1024)} KB, ${f.mime})`);
       });
-  } else {
-    server.tool('link_documento',
-      'Restituisce il link Google Drive per aprire o scaricare un documento (serve un account con accesso alla cartella condivisa).',
-      { id: z.string().describe('ID del documento') },
-      async ({ id }) => {
-        const idx = await getIndex();
-        const d = idx.docs.find((x) => x.id === id) || (await api('doc', { id }));
-        if (!d) return { content: [{ type: 'text', text: 'Documento non trovato: ' + id }], isError: true };
-        return text(`${d.titolo || d.nomeFile}\nApri: https://drive.google.com/file/d/${d.id}/view\nScarica: https://drive.google.com/uc?export=download&id=${d.id}`);
-      });
   }
+
+  server.tool('link_documento',
+    'Link per aprire o scaricare il file di un documento. I link valgono per gli indirizzi di famiglia abilitati sulla cartella dell\'archivio: chi li riceve deve essere connesso con uno di quelli.',
+    { id: z.string().describe('ID del documento') },
+    async ({ id }) => {
+      const idx = await getIndex();
+      const d = idx.docs.find((x) => x.id === id) || (await api('doc', { id }));
+      if (!d) return { content: [{ type: 'text', text: 'Documento non trovato: ' + id }], isError: true };
+      let chi = '';
+      try {
+        const a = await api('accessi');
+        const elenco = (a.con_accesso || []).map((x) => x.email);
+        if (elenco.length) chi = `\nPuò aprirlo: ${elenco.join(', ')}`;
+      } catch { /* l'elenco è un di più: il link si dà comunque */ }
+      return text(`${d.titolo || d.nomeFile}\nApri: https://drive.google.com/file/d/${d.id}/view\nScarica: https://drive.google.com/uc?export=download&id=${d.id}${chi}`);
+    });
 
   server.tool('correggi_documento',
     'Corregge i metadati di un documento (categoria, mittente, persone, data, titolo, ecc.). Il file viene rinominato e lo stato diventa "Verificato".',

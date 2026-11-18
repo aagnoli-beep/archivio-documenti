@@ -37,6 +37,10 @@ const server = http.createServer((req, res) => {
         return reply({ ok: true, user, data: { total: 2, estratti_mancanti: 1, query: b.query,
           docs: [{ ...docs[1], estratti: ['…Altezza 178 cm, peso 88,5 kg, BMI 27,9…'] }, { ...docs[0], estratti: [] }] } });
       }
+      case 'accessi': return reply({ ok: true, user, data: { cartella: 'https://drive.google.com/drive/folders/cartella',
+        proprietario: 'andrea@example.com', attesi: ['andrea@example.com', 'serena@example.com'],
+        con_accesso: [{ email: 'andrea@example.com', ruolo: 'owner' }, { email: 'serena@example.com', ruolo: 'reader' }],
+        senza_accesso: [], non_condivisibili: [], da_sistemare: [] } });
       default: return reply({ ok: false, code: 'bad_request', error: 'azione sconosciuta' });
     }
   });
@@ -52,7 +56,13 @@ let passed = 0;
 const t = async (name, fn) => { try { await fn(); passed++; console.log('  ✔ ' + name); } catch (e) { console.log('  ✘ ' + name + '\n    ' + (e.stack || e)); process.exitCode = 1; } };
 const text = (r) => r.content.map((c) => c.text).join('\n');
 
-await t('elenca 8 strumenti', async () => { const { tools } = await client.listTools(); assert.deepStrictEqual(tools.map((x) => x.name).sort(), ['cerca_documenti', 'cerca_nel_testo', 'chiedi_archivio', 'correggi_documento', 'dettaglio_documento', 'documenti_recenti', 'leggi_documento', 'scarica_documento']); });
+await t('elenca 9 strumenti', async () => { const { tools } = await client.listTools(); assert.deepStrictEqual(tools.map((x) => x.name).sort(), ['cerca_documenti', 'cerca_nel_testo', 'chiedi_archivio', 'correggi_documento', 'dettaglio_documento', 'documenti_recenti', 'leggi_documento', 'link_documento', 'scarica_documento']); });
+await t('link_documento dà il link da aprire, quello da scaricare e chi può usarli', async () => {
+  const r = text(await client.callTool({ name: 'link_documento', arguments: { id: 'a1' } }));
+  assert.ok(r.includes('https://drive.google.com/file/d/a1/view'), r);
+  assert.ok(r.includes('export=download&id=a1'), r);
+  assert.ok(r.includes('serena@example.com'), r);
+});
 await t('cerca "enel" trova la bolletta (senza accenti, insensibile alle maiuscole)', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: 'ENEL bollétta' } })); assert.ok(r.includes('1 documenti trovati')); assert.ok(r.includes('[a1]')); });
 await t('filtro persona + categoria', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: '', persona: 'andrea', categoria: 'salute' } })); assert.ok(r.includes('[b2]') && !r.includes('[a1]')); });
 await t('nessun risultato', async () => { const r = text(await client.callTool({ name: 'cerca_documenti', arguments: { query: 'zzz' } })); assert.ok(r.includes('Nessun documento')); });

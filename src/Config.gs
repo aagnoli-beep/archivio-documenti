@@ -85,7 +85,8 @@ var DEFAULT_CONFIG = [
   ['MAIL_INTAKE_ADDRESS', '', 'Indirizzo a cui inoltrare email e foto da archiviare (vuoto = <account>+archivio@gmail.com)'],
   ['MAIL_SENDERS', '', 'Mittenti ammessi per l\'ingresso via email (vuoto = ALLOWED_EMAILS + DIGEST_EMAILS + proprietario)'],
   ['WEEKLY_REPORT_DAY', '1', 'Giorno del riepilogo settimanale "tutto in ordine" (1 = lunedì, 0 = disattivato)'],
-  ['JUDGE_MODEL', 'claude-sonnet-5', 'Modello usato per decidere quali documenti trovati sul Mac meritano l\'archivio (costa poco: legge solo testo)']
+  ['JUDGE_MODEL', 'claude-sonnet-5', 'Modello usato per decidere quali documenti trovati sul Mac meritano l\'archivio (costa poco: legge solo testo)'],
+  ['SHARE_EMAILS', '', 'Indirizzi che possono aprire e scaricare i file da Drive (vuoto = ALLOWED_EMAILS + DIGEST_EMAILS)']
 ];
 
 /** Categorie iniziali: Categoria | Sottocategorie (separate da virgola). */
@@ -189,6 +190,11 @@ function getConfig() {
     })(),
     weeklyReportDay: (kv.WEEKLY_REPORT_DAY === undefined || kv.WEEKLY_REPORT_DAY === '') ? 1 : parseInt(kv.WEEKLY_REPORT_DAY, 10),
     judgeModel: String(kv.JUDGE_MODEL || 'claude-sonnet-5').trim(),
+    shareEmails: (function () {
+      var espliciti = splitEmails_(kv.SHARE_EMAILS);
+      var tutti = espliciti.length ? espliciti : splitEmails_(kv.ALLOWED_EMAILS).concat(splitEmails_(kv.DIGEST_EMAILS));
+      return tutti.filter(function (e, i) { return e && tutti.indexOf(e) === i; });
+    })(),
     categories: categories,
     categoryNames: Object.keys(categories)
   };

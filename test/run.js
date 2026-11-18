@@ -16,7 +16,7 @@ const props = G.__props;
 const inbox = DriveApp.getFolderById(props.INBOX_FOLDER_ID), archive = DriveApp.getFolderById(props.ARCHIVE_FOLDER_ID), backup = DriveApp.getFolderById(props.BACKUP_FOLDER_ID);
 const ss = SpreadsheetApp.openById(props.SPREADSHEET_ID);
 t('cartelle create sotto "Archivio Documenti"', () => { const r = DriveApp.getFolderById(props.ROOT_FOLDER_ID); assert.strictEqual(r.getName(), 'Archivio Documenti'); assert.deepStrictEqual(r.children.filter(c => c.kind === 'folder').map(c => c.name).sort(), ['00_Inbox', 'Archivio', 'Backup']); });
-t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 22); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
+t('fogli Indice/Config/Categorie/Log con intestazioni, Foglio1 rimosso', () => { assert.deepStrictEqual(ss.getSheets().map(s => s.name), ['Indice', 'Config', 'Categorie', 'Log']); assert.strictEqual(ss.getSheetByName('Indice').rows[0].length, 21); assert.strictEqual(ss.getSheetByName('Config').rows.length, 23); assert.strictEqual(ss.getSheetByName('Categorie').rows.length, 15); });
 t('quattro trigger installati', () => { assert.deepStrictEqual(G.__triggers.map(x => x.getHandlerFunction()), ['processInbox', 'processMailIntake', 'sendDailyDigest', 'exportIndexXlsx']); });
 t('setup rieseguibile senza duplicati', () => { setupProject(); assert.strictEqual(G.__triggers.length, 4); assert.strictEqual(DriveApp.getFolderById(props.ROOT_FOLDER_ID).children.filter(c => c.kind === 'folder').length, 3); });
 t('getConfig legge fogli e default', () => { const c = getConfig(); assert.strictEqual(c.model, 'claude-opus-5'); assert.strictEqual(c.confidenceThreshold, 0.75); assert.ok(c.categoryNames.indexOf('Salute') >= 0); assert.deepStrictEqual(c.family, ['Andrea Agnoli', 'Serena']); });
@@ -307,6 +307,10 @@ t('chiave sbagliata o corta -> rifiutata', () => { assert.strictEqual(call({ act
 t('backup_xlsx rigenera l\'export se vecchio e lo restituisce', () => { G.__httpHandler = (url) => url.indexOf('export?format=xlsx') > 0 ? { code: 200, body: '', bytes: [80, 75, 3, 4] } : claudeOk(bolletta); const r = call({ action: 'backup_xlsx', secret: 'chiave-di-famiglia-molto-lunga-123456' }); assert.strictEqual(r.ok, true); assert.ok(/^Indice_/.test(r.data.name)); assert.ok(G.__props.XLSX_LAST_EXPORT); G.__httpHandler = () => claudeOk(bolletta); });
 t('log: ultime righe leggibili con la chiave di famiglia', () => { const r = call({ action: 'log', secret: 'chiave-di-famiglia-molto-lunga-123456', limit: 5 }); assert.strictEqual(r.ok, true); assert.strictEqual(r.data.length, 5); assert.ok(r.data[4].livello && r.data[4].quando); });
 console.log('6b. rendiconto giornaliero via email');
+// Gli indirizzi di casa possono già aprire i file su Drive (la condivisione è provata nella sezione 11):
+// senza, il controllo di salute troverebbe un problema vero e manderebbe un'email in più proprio qui.
+G.__permessi[getProp_(PROP.ARCHIVE_FOLDER_ID, true)] = ['serena@example.com', 'andrea.agnoli.1984@gmail.com', 'andrea@example.com']
+  .map(e => ({ id: 'perm_' + e, emailAddress: e, role: 'reader', type: 'user' }));
 // Il lunedì partirebbe anche il riepilogo settimanale: qui lo segno come già inviato oggi,
 // così questi test contano solo le email del rendiconto.
 G.__props.RIEPILOGO_ULTIMO = new Date().toISOString().substring(0, 10);
@@ -548,6 +552,70 @@ t('azione "indicizza" solo per chi può modificare', () => {
   assert.throws(() => dispatch_('indicizza', utenteLettore, {}, getConfig()), (e) => e.code === 'forbidden');
   const r = dispatch_('indicizza', utenteEditor, { ids: [docSalute.getId()] }, getConfig());
   assert.strictEqual(r.gia_presenti, 1);
+});
+
+console.log('11. Accesso ai file: la famiglia deve poter aprire i documenti');
+ss.getSheetByName('Config').rows.forEach(r => { if (r[0] === 'SHARE_EMAILS') r[1] = 'andrea@example.com, serena@example.com, andrea@outlook.example'; });
+t('SHARE_EMAILS finisce in getConfig senza doppioni', () => {
+  assert.deepStrictEqual(getConfig().shareEmails, ['andrea@example.com', 'serena@example.com', 'andrea@outlook.example']);
+});
+t('senza SHARE_EMAILS valgono gli indirizzi ammessi e quelli del riepilogo', () => {
+  const righe = ss.getSheetByName('Config').rows;
+  const prima = righe.find(r => r[0] === 'SHARE_EMAILS')[1];
+  righe.find(r => r[0] === 'SHARE_EMAILS')[1] = '';
+  try {
+    const e = getConfig().shareEmails;
+    assert.ok(e.indexOf('serena@example.com') >= 0 && e.indexOf('andrea@example.com') >= 0);
+  } finally { righe.find(r => r[0] === 'SHARE_EMAILS')[1] = prima; }
+});
+t('condividiArchivio dà accesso in lettura alla cartella, una volta sola', () => {
+  G.__permessi = {}; G.__noPermessi = ['andrea@outlook.example'];
+  const r = condividiArchivio();
+  const per = {}; r.indirizzi.forEach(x => { per[x.email] = x.esito; });
+  assert.strictEqual(per['andrea@example.com'], 'proprietario');        // è l'account dell'archivio
+  assert.strictEqual(per['serena@example.com'], 'accesso aggiunto');
+  assert.strictEqual(per['andrea@outlook.example'], 'non riuscito');    // non è un account Google
+  const r2 = condividiArchivio();
+  assert.strictEqual(r2.indirizzi.find(x => x.email === 'serena@example.com').esito, 'già aveva accesso');
+});
+t('statoCondivisione elenca chi può aprire e chi no', () => {
+  const st = statoCondivisione();
+  assert.ok(st.con_accesso.some(x => x.email === 'serena@example.com' && x.ruolo === 'reader'));
+  assert.deepStrictEqual(st.senza_accesso, ['andrea@outlook.example']);
+  assert.deepStrictEqual(st.non_condivisibili, ['andrea@outlook.example']);   // non è un account Google
+  assert.deepStrictEqual(st.da_sistemare, []);
+});
+t('un indirizzo che non è un account Google non fa suonare l\'allarme ogni giorno', () => {
+  assert.ok(!controllaSalute().some(p => p.indexOf('aprire i documenti') >= 0));
+});
+t('un accesso che sparisce viene segnalato dal controllo di salute', () => {
+  const salvati = G.__permessi;
+  G.__permessi = {};
+  try {
+    const problemi = controllaSalute();
+    assert.ok(problemi.some(p => p.indexOf('serena@example.com') >= 0), 'accesso mancante non segnalato');
+  } finally { G.__permessi = salvati; }
+});
+t('verificaAccessiDocumenti: i file dentro la cartella ereditano, quelli fuori no', () => {
+  const dentro = getAllIndexRows();
+  const fuori = dentro.find(d => G.__nodes[d.id] && G.__nodes[d.id].parent && G.__nodes[d.id].parent.getId() !== getProp_(PROP.ARCHIVE_FOLDER_ID, true));
+  const r = verificaAccessiDocumenti({ sistema: true });
+  assert.strictEqual(r.controllati, dentro.length);
+  assert.ok(r.dentro_cartella + r.fuori_cartella + r.irreperibili === r.controllati);
+  if (fuori) assert.ok((G.__permessi[fuori.id] || []).some(p => p.emailAddress === 'serena@example.com'));
+});
+t('condividi con un elenco di indirizzi lo salva nel foglio Config', () => {
+  const r = condividiArchivio(null, ['Andrea@Example.com', 'nuova@example.com', 'nuova@example.com']);
+  assert.deepStrictEqual(getConfig().shareEmails, ['andrea@example.com', 'nuova@example.com']);
+  assert.strictEqual(r.indirizzi.find(x => x.email === 'nuova@example.com').esito, 'accesso aggiunto');
+  ss.getSheetByName('Config').rows.forEach(x => { if (x[0] === 'SHARE_EMAILS') x[1] = 'andrea@example.com, serena@example.com, andrea@outlook.example'; });
+});
+t('azione "accessi" la legge chiunque, "condividi" solo chi può modificare', () => {
+  const r = dispatch_('accessi', utenteLettore, {}, getConfig());
+  assert.ok(Array.isArray(r.attesi));
+  assert.throws(() => dispatch_('condividi', utenteLettore, {}, getConfig()), (e) => e.code === 'forbidden');
+  assert.throws(() => dispatch_('verifica_accessi', utenteLettore, {}, getConfig()), (e) => e.code === 'forbidden');
+  assert.ok(dispatch_('condividi', utenteEditor, {}, getConfig()).indirizzi.length);
 });
 
 

@@ -115,7 +115,7 @@ La copia scarica i documenti direttamente dal backend (non dipende da Google Dri
 Poi attiva l'automatismo ogni 15 minuti con `bash sync/install.sh` (log in `~/Library/Logs/archivio-sync.log`). Su iPhone: app File → iCloud Drive → tieni premuto "Archivio Documenti" → Condividi → Collabora con la famiglia.
 
 ### 9. Server MCP: chiedere all'archivio da Claude
-In `mcp/` c'è un server MCP locale (Node) che espone 6 strumenti: `cerca_documenti`, `dettaglio_documento`, `documenti_recenti`, `chiedi_archivio`, `scarica_documento`, `correggi_documento`. Usa la stessa chiave di famiglia letta da `~/.config/archivio-documenti/config.json`.
+In `mcp/` c'è un server MCP locale (Node) che espone 9 strumenti: `cerca_documenti`, `dettaglio_documento`, `documenti_recenti`, `chiedi_archivio`, `leggi_documento` (il testo dentro al documento, a pezzi), `cerca_nel_testo` (cerca nel contenuto, non solo nelle schede), `link_documento`, `scarica_documento`, `correggi_documento`. Usa la stessa chiave di famiglia letta da `~/.config/archivio-documenti/config.json`.
 ```bash
 cd mcp && npm install && npm test
 ```
@@ -241,6 +241,7 @@ Se qualcosa non va arriva **una sola email** con l'elenco dei problemi; se va tu
 - **Documenti lunghi e costi**: nel foglio `Config` la riga `LONG_PDF_PAGES` (30) indica sopra quante pagine il PDF viene classificato leggendo il testo invece di mandare il documento intero. Il file archiviato resta comunque completo; serve solo a non spendere credito per condizioni di polizza e contratti lunghi.
 - **PDF protetti da password**: l'API li rifiuta, quindi il classificatore riprova da solo con il testo estratto da Drive. Se anche quello è vuoto il documento viene archiviato come *Non classificato*, senza fermare la coda.
 - **Ripescare documenti da vecchie email**: le azioni `mail_scan` e `mail_import` dell'API cercano nella casella Gmail del proprietario i messaggi con allegati e importano solo quelli indicati; le conversazioni importate prendono l'etichetta `Archivio/Importate`.
+- **"Accesso negato" aprendo un link di Drive**: i link funzionano solo per gli indirizzi elencati nella riga `SHARE_EMAILS` del foglio `Config` (se è vuota valgono `ALLOWED_EMAILS` + `DIGEST_EMAILS`). L'accesso in lettura viene dato una volta sola sulla cartella `Archivio` e Drive lo eredita su tutti i file, vecchi e nuovi: si rilancia con l'azione `condividi` (che accetta anche `emails` e la salva nel foglio). L'azione `accessi` dice chi può aprire adesso, `verifica_accessi` controlla documento per documento che nessuno sia finito fuori dalla cartella. Se un accesso sparisce, il controllo di salute serale lo segnala per email; gli indirizzi che non sono account Google vengono segnati una volta sola e poi non riallarmano.
 - **Backup**: ogni notte un file Excel dell'indice in `Backup/`, copiato anche su iCloud come `Indice.xlsx`. Puoi anche generarlo subito eseguendo `exportIndexXlsx()`.
 
 ## Struttura del codice (`src/`)
@@ -261,6 +262,8 @@ Se qualcosa non va arriva **una sola email** con l'elenco dei problemi; se va tu
 | `Ask.gs` | "Chiedi all'archivio": risposte alle domande sui documenti con Claude |
 | `Judge.gs` | Decide quali documenti trovati sul Mac meritano l'archivio (azione `judge`, solo testo) |
 | `Health.gs` | Controllo di salute serale e battito della raccolta (azioni `heartbeat`, `salute`) |
+| `Text.gs` | Testo dentro ai documenti: OCR via Drive, copia salvata nella cartella `Testi`, ricerca nel contenuto (azioni `testo`, `cerca_testo`, `indicizza`) |
+| `Share.gs` | Chi può aprire i file su Drive: accesso in lettura sulla cartella Archivio (azioni `condividi`, `verifica_accessi`, `accessi`) |
 | `Api.gs` (azione `avviso`) | Email di avviso chiesta dal Mac, al massimo una al giorno per tipo |
 | `../docs/` | Il sito (HTML, CSS, JavaScript) pubblicato su GitHub Pages |
 | `../sync/sync-icloud.mjs`, `install.sh` | Copia dal backend a iCloud Drive dal Mac, con avvio automatico launchd |
@@ -268,6 +271,6 @@ Se qualcosa non va arriva **una sola email** con l'elenco dei problemi; se va tu
 | `../remote/src/index.js` | Connettore MCP remoto su Cloudflare Workers con OAuth (`node test.mjs` in `remote/`) |
 | `../harvest/daily-harvest.mjs` | Raccolta notturna dal Mac: cartelle, foto, email personali, WhatsApp Web (`node harvest/test.mjs`) |
 | `../harvest/whatsapp-web.mjs` | Scarica gli allegati dalle chat personali di WhatsApp Web (profilo Chrome dedicato) |
-| `../test/run.js` | 69 scenari della pipeline in un Apps Script simulato: `npm test` |
+| `../test/run.js` | 109 scenari della pipeline in un Apps Script simulato: `npm test` |
 
 Il codice è versionato in questo repository; su Google viene pubblicato con `npx clasp push`. La chiave API vive solo nelle Script Properties, mai nel repository.
